@@ -1,0 +1,82 @@
+<template>
+  <div class="page">
+    <div class="header">
+      <text style="font-size: {{fs(14, fontTick)}}px" class="back" @click="back">返回</text>
+      <text style="font-size: {{fs(19, fontTick)}}px" class="title">{{title}}</text>
+      <text style="font-size: {{fs(14, fontTick)}}px" class="back"></text>
+    </div>
+
+    <scroll class="scroll">
+      <div class="rule-group" for="g in help" tid="h">
+        <text style="font-size: {{fs(13, fontTick)}}px" class="rule-h">{{g.h}}</text>
+        <div class="rule-lines">
+          <text style="font-size: {{fs(12, fontTick)}}px" class="rule-p" for="ln in lines(g.p)" tid="$index">{{ln}}</text>
+        </div>
+      </div>
+      <div class="foot">
+        <text style="font-size: {{fs(11, fontTick)}}px" class="foot-text">{{boardDesc}}</text>
+      </div>
+    </scroll>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { fs, ensureScale } from '../../common/core/ui'
+import { byKey } from '../../common/core/games'
+
+export default {
+  fs: fs,
+  public: {
+    game: 'ttt'
+  },
+
+  private: {
+    fontTick: 0,
+    title: '',
+    help: [],
+    boardDesc: ''
+  },
+
+  onInit() {
+    ensureScale(() => { this.fontTick++ })
+    const g = byKey(this.game)
+    this.title = g.name
+    this.help = g.help
+    this.boardDesc = g.name + ' · 棋盘 ' + g.boardDesc
+  },
+
+  /** 规则文案里的 
+ 拆成多行（Vela 的 text 不保证按 
+ 换行） */
+  lines(p) {
+    return String(p || '').split('\n')
+  },
+
+  back() {
+    router.back()
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .scroll {
+    width: 100%;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .foot {
+    width: 100%;
+    height: 24px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .foot-text {
+    font-size: 11px;
+    color: #6b7078;
+  }
+</style>

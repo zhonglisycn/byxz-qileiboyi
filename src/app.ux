@@ -1,0 +1,35 @@
+<script>
+/**
+ * 应用级公共数据与方法，页面里用 this.$app.$def.xxx 访问。
+ * 本重制版不含任何激活 / 付费校验。
+ */
+import vibrator from '@system.vibrator'
+import { GAMES, byKey, defaultOptions, TIME_PRESETS } from './common/core/games'
+
+export default {
+  GAMES: GAMES,
+  byKey: byKey,
+  defaultOptions: defaultOptions,
+  TIME_PRESETS: TIME_PRESETS,
+
+  // 当前对局参数（设置页写入，对局页读取）
+  setup: null,
+
+  onCreate() {
+    this.setup = defaultOptions(byKey('ttt'))
+  },
+
+  onDestroy() {
+    this.setup = null
+  },
+
+  /** 轻微振动反馈（设备不支持时静默忽略） */
+  tap() {
+    try {
+      vibrator.vibrate({ mode: 'short' })
+    } catch (e) {
+      console.log('vibrate unsupported')
+    }
+  }
+}
+</script>

@@ -1,0 +1,276 @@
+/* 棋类博弈 · 公共样式
+   画布 212×520（胶囊屏）。左右各留 18px、上下留 26/14px 安全边距，
+   避免内容贴到圆角上（四角会被圆弧切掉）。
+   字号统一由页面内联的 fs(n) 覆盖，这里的 font-size 只是兜底默认值。 */
+
+.page {
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #0d0f12;
+  padding-left: 18px;
+  padding-right: 18px;
+  padding-top: 22px;
+  padding-bottom: 12px;
+}
+
+.row { flex-direction: row; align-items: center; }
+.col { flex-direction: column; }
+.center { align-items: center; justify-content: center; }
+.grow { flex: 1; }
+
+/* ---------- 文字（颜色一律写在文字自身，避免继承丢失导致看不见） ---------- */
+.t-title { font-size: 19px; color: #f0e6d2; font-weight: bold; text-align: center; }
+.t-sub { font-size: 12px; color: #8b8f96; }
+.t-back { font-size: 15px; color: #c9a86a; width: 58px; height: 34px; text-align: center; }
+.t-status { font-size: 13px; color: #e8e8e8; }
+.t-warn { color: #ff8a65; }
+.t-btn { font-size: 16px; color: #ffffff; text-align: center; width: 100%; }
+.t-item-k { font-size: 14px; color: #f0e6d2; }
+.t-item-v { font-size: 13px; color: #c9a86a; }
+.t-menu { font-size: 14px; color: #f0e6d2; text-align: center; width: 100%; }
+.t-menu-sub { font-size: 10px; color: #8b8f96; text-align: center; width: 100%; }
+.t-dlg-title { font-size: 15px; color: #2b1a0c; font-weight: bold; text-align: center; width: 100%; }
+.t-dlg-body { font-size: 12px; color: #5c3a21; text-align: center; width: 100%; }
+.t-dlg-btn { font-size: 15px; color: #ffffff; text-align: center; width: 100%; }
+.t-rule-h { font-size: 13px; color: #c9a86a; font-weight: bold; }
+.t-rule-p { font-size: 12px; color: #cfcfcf; }
+.t-info { font-size: 12px; color: #8b8f96; }
+.t-mark { font-size: 30px; font-weight: bold; text-align: center; width: 100%; }
+.t-cell { text-align: center; width: 100%; }
+
+/* 兼容旧类名（部分页面仍在使用） */
+.title { font-size: 19px; color: #f0e6d2; font-weight: bold; text-align: center; }
+.subtitle { font-size: 12px; color: #8b8f96; }
+.back { font-size: 15px; color: #c9a86a; width: 58px; height: 34px; text-align: center; }
+.status-text { font-size: 13px; color: #e8e8e8; }
+.status-warn { color: #ff8a65; }
+.item-label { font-size: 14px; color: #f0e6d2; }
+.item-value { font-size: 13px; color: #c9a86a; }
+.menu-text { font-size: 14px; color: #f0e6d2; text-align: center; width: 100%; }
+.dialog-title { font-size: 15px; color: #2b1a0c; font-weight: bold; text-align: center; width: 100%; }
+.dialog-body { font-size: 12px; color: #5c3a21; text-align: center; width: 100%; margin-top: 6px; margin-bottom: 8px; }
+.rule-h { font-size: 13px; color: #c9a86a; font-weight: bold; }
+.rule-p { font-size: 12px; color: #cfcfcf; margin-top: 1px; }
+
+/* ---------- 顶栏 / 状态条 ---------- */
+.header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 34px;
+  flex-shrink: 0;
+}
+
+.status {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+/* ---------- 棋盘视口（放大 + 平移） ---------- */
+.viewport {
+  position: relative;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+}
+
+.vbox {
+  position: relative;
+  background-color: #d8c49a;
+  border-radius: 3px;
+}
+
+.vcell {
+  position: absolute;
+  align-items: center;
+  justify-content: center;
+}
+
+.vcell-r {
+  border-right-width: 1px;
+  border-right-color: #6b5836;
+  border-right-style: solid;
+}
+
+.vcell-b {
+  border-bottom-width: 1px;
+  border-bottom-color: #6b5836;
+  border-bottom-style: solid;
+}
+
+.dark-r { border-right-color: #4c525c; }
+.dark-b { border-bottom-color: #4c525c; }
+
+.piece { width: 100%; height: 100%; }
+.stone { width: 100%; height: 100%; }
+.mark { font-weight: bold; text-align: center; width: 100%; }
+
+/* 状态类 */
+.tap { background-color: rgba(255, 255, 255, 0.06); }
+.last-move { background-color: rgba(214, 122, 43, 0.75); }
+.sele { background-color: rgba(76, 175, 80, 0.85); }
+.can { background-color: rgba(255, 193, 7, 0.72); }
+.can-cap { background-color: rgba(229, 57, 53, 0.78); }
+.camp { background-color: #3d4450; }
+.hq { background-color: #4a3630; }
+.den { background-color: #5a3a3a; }
+.river { background-color: #3a5a6a; }
+.trap { background-color: #5a4a2a; }
+.palace { background-color: rgba(160, 130, 80, 0.22); }
+.front-gap { margin-bottom: 6px; }
+
+/* ---------- 按钮 ---------- */
+.btn {
+  height: 44px;
+  border-radius: 22px;
+  background-color: #3a3f47;
+  align-items: center;
+  justify-content: center;
+}
+.btn-primary { background-color: #4caf50; }
+.btn-warn { background-color: #ff9800; }
+.btn-quiet { background-color: #4a4f57; }
+.btn-row { flex-direction: row; width: 100%; flex-shrink: 0; }
+.v-gap { width: 7px; }
+
+/* 悬浮方向键：贴在棋盘四周（放大后才出现），44×44 便于点按 */
+.pad-overlay {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  background-color: rgba(16, 18, 22, 0.72);
+  align-items: center;
+  justify-content: center;
+}
+
+.pad-glyph {
+  font-size: 22px;
+  color: #ffffff;
+  text-align: center;
+  width: 100%;
+}
+
+.pad-row {
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.pad-btn {
+  width: 60px;
+  height: 44px;
+  margin-left: 4px;
+  margin-right: 4px;
+  border-radius: 22px;
+  background-color: #4a4f57;
+  align-items: center;
+  justify-content: center;
+}
+
+.pad-text { font-size: 15px; color: #ffffff; text-align: center; }
+.pad-off { background-color: #2a2e34; }
+.pad-text-off { color: #6b7078; }
+
+/* 缩放胶囊（棋盘左上角常驻） */
+.zoom-chip {
+  position: absolute;
+  right: 0px;
+  top: 0px;
+  height: 30px;
+  padding-left: 10px;
+  padding-right: 10px;
+  border-radius: 15px;
+  background-color: rgba(88, 94, 104, 0.95);
+  align-items: center;
+  justify-content: center;
+}
+
+.zoom-chip-text { font-size: 14px; color: #ffffff; text-align: center; }
+
+/* ---------- 列表项 ---------- */
+.item {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 38px;
+  background-color: rgba(120, 120, 121, 0.25);
+  border-radius: 9px;
+  padding-left: 10px;
+  padding-right: 10px;
+  margin-bottom: 6px;
+}
+
+/* ---------- 主菜单：两列网格（84+4 边距 → 两列 176px，正好放下） ---------- */
+.menu-grid {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: flex-start;
+  width: 100%;
+}
+
+.menu-item {
+  width: 80px;
+  height: 92px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 3px;
+  background-color: rgba(120, 120, 121, 0.22);
+  border-radius: 12px;
+}
+
+.menu-icon { width: 46px; height: 46px; }
+.menu-badge { font-size: 10px; color: #c9a86a; }
+
+/* ---------- 弹层 ---------- */
+.mask {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog {
+  width: 168px;
+  background-color: rgba(226, 218, 187, 0.97);
+  border-radius: 12px;
+  padding: 12px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.dialog-btn {
+  width: 100%;
+  height: 42px;
+  border-radius: 21px;
+  align-items: center;
+  justify-content: center;
+  background-color: #8d7a52;
+  margin-top: 8px;
+}
+
+.dialog-btn-ok { background-color: #4caf50; }
+.dialog-btn-cancel { background-color: #9e9e9e; }
+
+/* ---------- 规则文本 ---------- */
+.rule-group { width: 100%; flex-direction: column; margin-bottom: 8px; }
+.rule-line { width: 100%; }
+.foot { width: 100%; height: 22px; align-items: center; justify-content: center; }
+
+.rule-lines { flex-direction: column; width: 100%; }

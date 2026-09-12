@@ -1,0 +1,542 @@
+<template>
+  <div class="page">
+    <div class="header">
+      <text style="font-size: {{fs(14, fontTick)}}px" class="back" @click="confirmExit">返回</text>
+      <text style="font-size: {{fs(19, fontTick)}}px" class="title">斗兽棋</text>
+      <text style="font-size: {{fs(14, fontTick)}}px" class="back" @click="askRestart">重开</text>
+    </div>
+
+    <div class="status">
+      <text style="font-size: {{fs(13, fontTick)}}px" class="status-text {{hintWarn ? 'status-warn' : ''}}">{{hint}}</text>
+      <text style="font-size: {{fs(13, fontTick)}}px" class="status-text {{hintWarn ? 'status-warn' : ''}}">{{timeText}}</text>
+    </div>
+
+    <div class="viewport">
+      <!-- 缩放胶囊：在棋盘上方的空白区，不挡棋子 -->
+      <div class="zoom-chip" @click="cycleZoom">
+        <text class="zoom-chip-text">{{zoomName}}</text>
+      </div>
+      <div class="vbox" style="width: {{vp.vw}}px; height: {{vp.vh}}px">
+        <div class="vcell {{$item.cls}}" for="{{cells}}" tid="i"
+             style="left: {{$item.x}}px; top: {{$item.y}}px; width: {{$item.w}}px; height: {{$item.h}}px"
+             @click="tap($item.i)">
+          <image class="pc" src="{{$item.img}}" if="{{$item.img}}"></image>
+          <text class="tag" style="font-size: {{fs(11, fontTick)}}px" if="{{$item.txt}}">{{$item.txt}}</text>
+        </div>
+        <!-- 悬浮方向键：放大后贴在棋盘四边，44×44 好点 -->
+        <div class="pad-overlay" style="left: 0px; top: {{padMidTop}}px" if="{{panL}}" @click="doPan(-1, 0)">
+          <text class="pad-glyph">‹</text>
+        </div>
+        <div class="pad-overlay" style="left: {{padRightX}}px; top: {{padMidTop}}px" if="{{panR}}" @click="doPan(1, 0)">
+          <text class="pad-glyph">›</text>
+        </div>
+        <div class="pad-overlay" style="left: {{padMidX}}px; top: 0px" if="{{panU}}" @click="doPan(0, -1)">
+          <text class="pad-glyph">˄</text>
+        </div>
+        <div class="pad-overlay" style="left: {{padMidX}}px; top: {{padBottomY}}px" if="{{panD}}" @click="doPan(0, 1)">
+          <text class="pad-glyph">˅</text>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row" style="margin-top: 7px;">
+      <div class="btn btn-quiet grow" @click="undo">
+        <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">悔棋</text>
+      </div>
+      <div class="v-gap"></div>
+      <div class="btn btn-quiet grow" @click="askRestart">
+        <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">重开</text>
+      </div>
+    </div>
+
+    <div class="mask" if="{{dialog}}">
+      <div class="dialog">
+        <text style="font-size: {{fs(15, fontTick)}}px" class="dialog-title">{{dialogTitle}}</text>
+        <text style="font-size: {{fs(12, fontTick)}}px" class="dialog-body">{{dialogBody}}</text>
+        <div class="dialog-btn dialog-btn-ok" @click="again">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">再来一局</text>
+        </div>
+        <div class="dialog-btn dialog-btn-cancel" @click="exit">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">返回主页</text>
+        </div>
+      </div>
+    </div>
+
+    <div class="mask" if="{{ask}}">
+      <div class="dialog">
+        <text style="font-size: {{fs(15, fontTick)}}px" class="dialog-title">{{askTitle}}</text>
+        <text style="font-size: {{fs(12, fontTick)}}px" class="dialog-body">{{askBody}}</text>
+        <div class="dialog-btn dialog-btn-ok" @click="askYes">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">确定</text>
+        </div>
+        <div class="dialog-btn dialog-btn-cancel" @click="askNo">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">取消</text>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { fs, ensureScale, makeView, pan as vpan, visibleCells, maxOx, maxOy } from '../../common/core/ui'
+import { newGame, apply, aiMove, undo as undoMove, legalMoves, playerOf, kindOf, KIND,
+  isRiverIdx, trapOwner, RED_DEN, BLUE_DEN, COLS, ROWS } from '../../common/core/jungle'
+import { saveKey, loadKey, dropKey } from '../../common/core/util'
+import { fmtClock } from '../../common/core/rnd'
+
+const SAVE = 'fc_save_dsq'
+const AI = 2
+
+// 放大档位：全盘 → 中 → 大（7×9 全盘用 25px 格子刚好放下）
+const ZOOMS = [
+  { cw: 26, ch: 26, name: '全盘' },
+  { cw: 36, ch: 36, name: '中' },
+  { cw: 50, ch: 50, name: '大' },
+]
+
+export default {
+  fs: fs,
+  public: {
+    game: '',
+    mode: 'ai',
+    level: '1',
+    resume: '',
+    useTimer: '',
+    baseMinutes: '',
+    addSeconds: ''
+  },
+
+  private: {
+    fontTick: 0,
+    st: null,
+    cells: [],
+    hint: '',
+    hintWarn: false,
+    timeText: '',
+    modeText: '',
+    dialog: false,
+    dialogTitle: '',
+    dialogBody: '',
+    ask: false,
+    askTitle: '',
+    askBody: '',
+    askKind: '',
+    busy: false,
+    timeout: false,
+    sel: -1,
+    targets: [],
+    lv: 1,
+    pMode: 'ai',
+    useT: false,
+    baseSec: 1800,
+    addSec: 5,
+    timer: null,
+    vp: { vw: 175, vh: 225, ox: 0, oy: 0, visCols: 7, visRows: 9, cols: 7, rows: 9, cw: 25, ch: 25, padX: 0, padY: 0 },
+    zi: 0,
+    zoomName: '全盘',
+    panL: false, panR: false, panU: false, panD: false,
+    padMidTop: 0, padRightX: 0, padMidX: 0, padBottomY: 0,
+  },
+
+  onInit() {
+    ensureScale(() => { this.fontTick++ })
+    const app = this.$app.$def
+    const s = app.setup || {}
+    let m = this.mode || s.mode || 'ai'
+    this.pMode = m === 'pvp' ? 'pvp' : 'ai'
+    this.lv = parseInt(this.level, 10) || s.level || 1
+    this.baseSec = (parseInt(this.baseMinutes, 10) || s.baseMinutes || 30) * 60
+    let add = parseInt(this.addSeconds, 10)
+    if (isNaN(add)) add = s.addSeconds || 0
+    this.addSec = add
+    this.useT = this.useTimer === '1' ? true : (this.useTimer === '' ? !!s.useTimer : false)
+    this.buildView()
+
+    if (this.resume) {
+      loadKey(SAVE, (ok, data) => {
+        if (ok && data) {
+          try {
+            const st = JSON.parse(data)
+            this.st = st
+            this.pMode = st.mode === 'pvp' ? 'pvp' : 'ai'
+            if (st.lv) this.lv = st.lv
+            if (st.useTimer !== undefined) this.useT = !!st.useTimer
+            if (st.baseMinutes) this.baseSec = st.baseMinutes * 60
+            if (st.addSeconds !== undefined) this.addSec = st.addSeconds
+            if (this.useT) {
+              if (typeof st.t1 !== 'number') st.t1 = this.baseSec
+              if (typeof st.t2 !== 'number') st.t2 = this.baseSec
+            }
+            this.sel = -1
+            this.targets = []
+            this.setModeText()
+            this.sync()
+            this.persist()
+            this.startClock()
+            if (!st.over && this.pMode === 'ai' && st.turn === AI) this.scheduleAi()
+            return
+          } catch (e) { console.log('斗兽棋存档解析失败') }
+        }
+        this.restart()
+      })
+    } else {
+      this.restart()
+    }
+  },
+
+  onDestroy() {
+    this.stopClock()
+  },
+
+  /* ---------------- 视口 ---------------- */
+  buildView() {
+    const z = ZOOMS[this.zi]
+    this.vp = makeView(COLS, ROWS, z.cw, z.ch, 184, 272)
+    this.zoomName = z.name
+  },
+
+  cycleZoom() {
+    this.$app.$def.tap()
+    const cx = this.vp.ox + Math.floor(this.vp.visCols / 2)
+    const cy = this.vp.oy + Math.floor(this.vp.visRows / 2)
+    this.zi = (this.zi + 1) % ZOOMS.length
+    this.buildView()
+    this.vp.ox = Math.max(0, Math.min(maxOx(this.vp), cx - Math.floor(this.vp.visCols / 2)))
+    this.vp.oy = Math.max(0, Math.min(maxOy(this.vp), cy - Math.floor(this.vp.visRows / 2)))
+    this.sync()
+  },
+
+  doPan(dh, dv) {
+    if (!vpan(this.vp, dh, dv)) return
+    this.$app.$def.tap()
+    this.sync()
+  },
+
+  updatePanState() {
+    this.padMidTop = Math.round((this.vp.vh - 44) / 2)
+    this.padRightX = this.vp.vw - 44
+    this.padMidX = Math.round((this.vp.vw - 44) / 2)
+    this.padBottomY = this.vp.vh - 44
+
+    this.panL = this.vp.ox > 0
+    this.panR = this.vp.ox < maxOx(this.vp)
+    this.panU = this.vp.oy > 0
+    this.panD = this.vp.oy < maxOy(this.vp)
+  },
+
+  levelName() {
+    const g = this.$app.$def.byKey('dsq')
+    return g.levels[this.lv - 1] || g.levels[0]
+  },
+
+  setModeText() {
+    this.modeText = this.pMode === 'ai' ? ('人机 · ' + this.levelName()) : '双人'
+  },
+
+  restart() {
+    const st = newGame({
+      mode: this.pMode,
+      useTimer: this.useT,
+      baseMinutes: Math.round(this.baseSec / 60),
+      addSeconds: this.addSec
+    })
+    st.lv = this.lv
+    st.t1 = this.baseSec
+    st.t2 = this.baseSec
+    this.st = st
+    this.sel = -1
+    this.targets = []
+    this.busy = false
+    this.dialog = false
+    this.timeout = false
+    this.setModeText()
+    this.sync()
+    this.persist()
+    this.startClock()
+  },
+
+  /* ---------------- 渲染同步 ---------------- */
+  sync() {
+    const st = this.st
+    if (!st) return
+    const self = this
+    this.cells = visibleCells(this.vp, function (x, y) {
+      const i = y * COLS + x
+      let cls = 'vcell'
+      if (x < COLS - 1) cls += ' vcell-r'
+      if (y < ROWS - 1) cls += ' vcell-b'
+      if (isRiverIdx(i)) cls += ' river'
+      else if (trapOwner(i)) cls += ' trap'
+      else if (i === RED_DEN || i === BLUE_DEN) cls += ' den'
+      if (st.last === i) cls += ' last-move'
+      if (i === self.sel) cls += ' sel'
+      else if (self.targets.indexOf(i) >= 0) cls += ' can'
+      const c = st.board[i]
+      let src = ''
+      let tag = ''
+      if (c) {
+        src = '/common/chess/dsq/' + (playerOf(c) === 1 ? 'r_' : 'b_') + KIND[kindOf(c)] + '.png'
+      } else if (i === RED_DEN || i === BLUE_DEN) {
+        tag = '穴'
+      }
+      return { cls: cls, img: src, txt: tag }
+    })
+    this.updatePanState()
+    this.updateHint()
+  },
+
+  updateHint() {
+    const st = this.st
+    if (!st) return
+    this.hintWarn = false
+    if (st.over) {
+      if (this.pMode === 'ai') this.hint = st.winner === 1 ? '你获胜！' : 'AI 获胜'
+      else this.hint = (st.winner === 1 ? '红方' : '蓝方') + '获胜'
+      if (this.useT) this.timeText = fmtClock(st.winner === 1 ? st.t1 : st.t2)
+      else this.timeText = this.modeText
+      if (!this.dialog) this.showResult()
+      return
+    }
+    if (this.pMode === 'ai') this.hint = st.turn === 1 ? '你的回合' : 'AI 思考中…'
+    else this.hint = st.turn === 1 ? '红方走棋' : '蓝方走棋'
+    if (this.useT) {
+      const t = st.turn === 1 ? st.t1 : st.t2
+      this.timeText = fmtClock(t)
+      if (t <= 30) this.hintWarn = true
+    } else {
+      this.timeText = this.modeText
+    }
+  },
+
+  showResult() {
+    const st = this.st
+    const me = this.pMode === 'ai'
+    if (this.timeout) {
+      this.dialogTitle = me ? (st.winner === 1 ? '你获胜！' : '你超时了') : ((st.winner === 1 ? '红方' : '蓝方') + '获胜')
+      this.dialogBody = st.text || '时间用尽'
+    } else if (me) {
+      this.dialogTitle = st.winner === 1 ? '你获胜！' : '你输了'
+      this.dialogBody = st.winner === 1 ? '击败了对手，漂亮' : '被对手击败，再来一局？'
+    } else {
+      this.dialogTitle = (st.winner === 1 ? '红方' : '蓝方') + '获胜！'
+      this.dialogBody = st.text || '对局结束'
+    }
+    this.dialog = true
+  },
+
+  /* ---------------- 交互 ---------------- */
+  refreshTargets() {
+    const st = this.st
+    const list = legalMoves(st.board, st.turn)
+    const out = []
+    for (let i = 0; i < list.length; i++) if (list[i].from === this.sel) out.push(list[i].to)
+    this.targets = out
+  },
+
+  tap(i) {
+    const st = this.st
+    if (!st || this.busy || this.dialog || st.over) return
+    if (this.pMode === 'ai' && st.turn === AI) return
+    const c = st.board[i]
+    if (this.sel < 0) {
+      if (c && playerOf(c) === st.turn) {
+        this.sel = i
+        this.refreshTargets()
+        this.$app.$def.tap()
+        this.sync()
+      }
+      return
+    }
+    if (i === this.sel) {
+      this.sel = -1
+      this.targets = []
+      this.sync()
+      return
+    }
+    if (c && playerOf(c) === st.turn) {
+      this.sel = i
+      this.refreshTargets()
+      this.$app.$def.tap()
+      this.sync()
+      return
+    }
+    if (this.targets.indexOf(i) >= 0) {
+      const from = this.sel
+      this.sel = -1
+      this.targets = []
+      this.$app.$def.tap()
+      const mover = st.turn
+      if (apply(st, { from: from, to: i }, mover)) {
+        this.addTime(mover)
+        this.afterMove()
+      } else {
+        this.sync()
+      }
+      return
+    }
+    this.sel = -1
+    this.targets = []
+    this.sync()
+  },
+
+  afterMove() {
+    const st = this.st
+    this.sync()
+    this.persist()
+    if (st.over) {
+      this.stopClock()
+      return
+    }
+    if (this.pMode === 'ai' && st.turn === AI) this.scheduleAi()
+  },
+
+  scheduleAi() {
+    this.busy = true
+    setTimeout(() => {
+      const st = this.st
+      if (!st || st.over || st.turn !== AI) { this.busy = false; return }
+      const mover = st.turn
+      const m = aiMove(st, this.lv)
+      if (m) {
+        apply(st, m, mover)
+        this.addTime(mover)
+      }
+      this.busy = false
+      this.sync()
+      this.persist()
+      if (st.over) this.stopClock()
+    }, 190)
+  },
+
+  undo() {
+    const st = this.st
+    if (this.busy || !st || !st.history || !st.history.length) return
+    this.$app.$def.tap()
+    this.dialog = false
+    this.timeout = false
+    undoMove(st)
+    if (this.pMode === 'ai' && st.turn === AI && st.history.length) undoMove(st)
+    this.sel = -1
+    this.targets = []
+    this.sync()
+    this.persist()
+  },
+
+  /* ---------------- 计时 ---------------- */
+  startClock() {
+    this.stopClock()
+    if (!this.useT) return
+    this.timer = setInterval(() => { this.tick() }, 1000)
+  },
+
+  stopClock() {
+    if (this.timer) {
+      clearInterval(this.timer)
+      this.timer = null
+    }
+  },
+
+  tick() {
+    const st = this.st
+    if (!st || st.over || this.dialog || !this.useT) return
+    const p = st.turn
+    if (p === 1) st.t1 = Math.max(0, (st.t1 || 0) - 1)
+    else st.t2 = Math.max(0, (st.t2 || 0) - 1)
+    const left = p === 1 ? st.t1 : st.t2
+    if (left <= 0) {
+      st.over = true
+      st.winner = p === 1 ? 2 : 1
+      st.text = '时间到，' + (st.winner === 1 ? '红方' : '蓝方') + '获胜'
+      this.timeout = true
+      this.stopClock()
+      this.sync()
+      this.persist()
+    } else {
+      this.updateHint()
+    }
+  },
+
+  addTime(p) {
+    if (!this.useT) return
+    const st = this.st
+    if (p === 1) st.t1 = (st.t1 || 0) + this.addSec
+    else st.t2 = (st.t2 || 0) + this.addSec
+  },
+
+  persist() {
+    if (!this.st) return
+    saveKey(SAVE, JSON.stringify(this.st), null)
+  },
+
+  /* ---------------- 弹窗 ---------------- */
+  askRestart() {
+    this.askTitle = '重新开始'
+    this.askBody = '当前棋局将被清空'
+    this.askKind = 'restart'
+    this.ask = true
+  },
+
+  confirmExit() {
+    if (this.st && !this.st.over && this.st.moves > 0) {
+      this.askTitle = '退出对局'
+      this.askBody = '本局进度已自动保存'
+      this.askKind = 'exit'
+      this.ask = true
+    } else {
+      this.exit()
+    }
+  },
+
+  askYes() {
+    const k = this.askKind
+    this.ask = false
+    if (k === 'exit') {
+      this.exit()
+    } else if (k === 'restart') {
+      dropKey(SAVE, null)
+      this.restart()
+    }
+  },
+
+  askNo() { this.ask = false },
+
+  again() {
+    dropKey(SAVE, null)
+    this.restart()
+  },
+
+  exit() {
+    this.stopClock()
+    router.back()
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .vbox { background-color: #1d3a29; }
+
+  .vcell {
+    border-right-color: #122a1e;
+    border-bottom-color: #122a1e;
+  }
+
+  .river { background-color: #2f6d88; }
+  .trap { background-color: #7a4a24; }
+  .den { background-color: #b8912f; }
+
+  .vcell.sel { background-color: #e08b3a; }
+
+  .vcell.can { background-color: rgba(255, 180, 90, 0.55); }
+
+  .vcell.last-move { background-color: rgba(201, 168, 106, 0.5); }
+
+  .pc { width: 86%; height: 86%; }
+
+  .tag {
+    font-weight: bold;
+    color: #5a3a10;
+  }
+</style>

@@ -1,0 +1,522 @@
+<template>
+  <div class="page">
+    <div class="header">
+      <text style="font-size: {{fs(14, fontTick)}}px" class="back" @click="confirmExit">返回</text>
+      <text style="font-size: {{fs(19, fontTick)}}px" class="title">飞行棋</text>
+      <text style="font-size: {{fs(14, fontTick)}}px" class="back" @click="askRestart">重开</text>
+    </div>
+
+    <div class="status">
+      <text style="font-size: {{fs(13, fontTick)}}px" class="status-text {{warn ? 'status-warn' : ''}}">{{hint}}</text>
+      <text style="font-size: {{fs(12, fontTick)}}px" class="subtitle">{{sub}}</text>
+    </div>
+
+    <div class="viewport">
+      <!-- 缩放胶囊：在棋盘上方的空白区，不挡棋子 -->
+      <div class="zoom-chip" @click="cycleZoom">
+        <text class="zoom-chip-text">{{zoomName}}</text>
+      </div>
+      <div class="vbox" style="width: {{vp.vw}}px; height: {{vp.vh}}px">
+        <div class="vcell {{$item.cls}}" for="{{cells}}" tid="i"
+             style="left: {{$item.x}}px; top: {{$item.y}}px; width: {{$item.w}}px; height: {{$item.h}}px"
+             @click="tap($item.i)">
+          <div class="dot {{$item.dcls}}" if="{{$item.dn}}">
+            <text style="font-size: {{fs(7, fontTick)}}px" class="dot-n" if="{{$item.dmany}}">{{$item.dn}}</text>
+          </div>
+          <text style="font-size: {{fs(8, fontTick)}}px" class="mk" if="{{$item.mk}}">{{$item.mk}}</text>
+        </div>
+        <!-- 悬浮方向键：放大后贴在棋盘四边，44×44 好点 -->
+        <div class="pad-overlay" style="left: 0px; top: {{padMidTop}}px" if="{{panL}}" @click="doPan(-1, 0)">
+          <text class="pad-glyph">‹</text>
+        </div>
+        <div class="pad-overlay" style="left: {{padRightX}}px; top: {{padMidTop}}px" if="{{panR}}" @click="doPan(1, 0)">
+          <text class="pad-glyph">›</text>
+        </div>
+        <div class="pad-overlay" style="left: {{padMidX}}px; top: 0px" if="{{panU}}" @click="doPan(0, -1)">
+          <text class="pad-glyph">˄</text>
+        </div>
+        <div class="pad-overlay" style="left: {{padMidX}}px; top: {{padBottomY}}px" if="{{panD}}" @click="doPan(0, 1)">
+          <text class="pad-glyph">˅</text>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row" style="margin-top: 7px;">
+      <div class="btn {{canRoll ? 'btn-primary' : 'btn-quiet'}} grow" @click="rollDice">
+        <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">掷骰子</text>
+      </div>
+      <div class="v-gap"></div>
+      <div class="btn btn-quiet grow" @click="askRestart">
+        <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">重开</text>
+      </div>
+    </div>
+
+    <div class="mask" if="{{dialog}}">
+      <div class="dialog">
+        <text style="font-size: {{fs(15, fontTick)}}px" class="dialog-title">{{dialogTitle}}</text>
+        <text style="font-size: {{fs(12, fontTick)}}px" class="dialog-body">{{dialogBody}}</text>
+        <div class="dialog-btn dialog-btn-ok" @click="again">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">再来一局</text>
+        </div>
+        <div class="dialog-btn dialog-btn-cancel" @click="exit">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">返回主页</text>
+        </div>
+      </div>
+    </div>
+
+    <div class="mask" if="{{ask}}">
+      <div class="dialog">
+        <text style="font-size: {{fs(15, fontTick)}}px" class="dialog-title">{{askTitle}}</text>
+        <text style="font-size: {{fs(12, fontTick)}}px" class="dialog-body">{{askBody}}</text>
+        <div class="dialog-btn dialog-btn-ok" @click="askYes">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">确定</text>
+        </div>
+        <div class="dialog-btn dialog-btn-cancel" @click="askNo">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">取消</text>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { fs, ensureScale, makeView, pan as vpan, visibleCells, maxOx, maxOy } from '../../common/core/ui'
+import {
+  newGame, roll, apply, pass, legalMoves, aiMove, result,
+  planeXY, LAYOUT, SIZE, START, RING_LEN, isFlyCell, doneCounts
+} from '../../common/core/aeroplane'
+import { saveKey, loadKey, dropKey } from '../../common/core/util'
+
+const SAVE = 'fc_save_fxq'
+const CNAME = ['', '红', '黄', '蓝', '绿']
+
+// 放大档位：全盘 → 中 → 大（放大后用方向键平移）
+const ZOOMS = [
+  { cw: 12, ch: 12, name: '全盘' },
+  { cw: 20, ch: 20, name: '中' },
+  { cw: 30, ch: 30, name: '大' },
+]
+
+/* 环上「虚线飞行」格（固定下标，四方对称） */
+const FLY_RING = (function () {
+  const s = {}
+  for (let p = 1; p <= 4; p++) {
+    for (let prog = 0; prog <= RING_LEN - 1; prog++) {
+      if (isFlyCell(prog)) s[(START[p] + prog) % RING_LEN] = 1
+    }
+  }
+  return s
+})()
+
+export default {
+  fs: fs,
+  public: {
+    game: 'fxq',
+    mode: 'ai',
+    level: '1',
+    takeoff: '6',
+    resume: ''
+  },
+
+  private: {
+    fontTick: 0,
+    cells: [],
+    hint: '',
+    sub: '',
+    warn: false,
+    canRoll: false,
+    dialog: false,
+    dialogTitle: '',
+    dialogBody: '',
+    ask: false,
+    askTitle: '',
+    askBody: '',
+    askKind: '',
+    busy: false,
+    lv: 1,
+    takeoffN: 6,
+    movable: {},
+    st: null,
+    vp: { vw: 176, vh: 336, ox: 0, oy: 0, visCols: 15, visRows: 15, cols: 15, rows: 15, cw: 11, ch: 11, padX: 0, padY: 0 },
+    zi: 0,
+    zoomName: '全盘',
+    panL: false, panR: false, panU: false, panD: false,
+    padMidTop: 0, padRightX: 0, padMidX: 0, padBottomY: 0,
+  },
+
+  onInit() {
+    ensureScale(() => { this.fontTick++ })
+    const app = this.$app.$def
+    const s = app.setup || {}
+    if (this.mode !== 'ai' && this.mode !== 'pvp') this.mode = s.mode === 'pvp' ? 'pvp' : 'ai'
+    this.lv = parseInt(this.level, 10) || s.level || 1
+    if (this.lv < 1 || this.lv > 2) this.lv = 1
+    this.takeoffN = parseInt(this.takeoff, 10) || s.takeoff || 6
+    this.buildView()
+
+    if (this.resume) {
+      loadKey(SAVE, (ok, data) => {
+        if (ok && data) {
+          try {
+            const st = JSON.parse(data)
+            if (st && st.planes && st.planes.length === 16) {
+              this.st = st
+              if (this.mode !== st.mode) this.mode = st.mode === 'pvp' ? 'pvp' : 'ai'
+              this.takeoffN = st.takeoff
+              this.sync()
+              if (this.isAiTurn()) this.scheduleAi()
+              return
+            }
+          } catch (e) { console.log('存档解析失败') }
+        }
+        this.restart()
+      })
+    } else {
+      this.restart()
+    }
+  },
+
+  restart() {
+    this.st = newGame({ mode: this.mode, takeoff: this.takeoffN })
+    this.dialog = false
+    this.busy = false
+    this.sync()
+    this.persist()
+    if (this.isAiTurn()) this.scheduleAi()
+  },
+
+  isAiTurn() {
+    return this.mode === 'ai' && this.st && !this.st.winner && this.st.turn !== 1
+  },
+
+  /* ---------------- 视口 ---------------- */
+  buildView() {
+    const z = ZOOMS[this.zi]
+    this.vp = makeView(SIZE, SIZE, z.cw, z.ch, 184, 272)
+    this.zoomName = z.name
+  },
+
+  cycleZoom() {
+    this.$app.$def.tap()
+    const cx = this.vp.ox + Math.floor(this.vp.visCols / 2)
+    const cy = this.vp.oy + Math.floor(this.vp.visRows / 2)
+    this.zi = (this.zi + 1) % ZOOMS.length
+    this.buildView()
+    this.vp.ox = Math.max(0, Math.min(maxOx(this.vp), cx - Math.floor(this.vp.visCols / 2)))
+    this.vp.oy = Math.max(0, Math.min(maxOy(this.vp), cy - Math.floor(this.vp.visRows / 2)))
+    this.sync()
+  },
+
+  doPan(dh, dv) {
+    if (!vpan(this.vp, dh, dv)) return
+    this.$app.$def.tap()
+    this.sync()
+  },
+
+  updatePanState() {
+    this.padMidTop = Math.round((this.vp.vh - 44) / 2)
+    this.padRightX = this.vp.vw - 44
+    this.padMidX = Math.round((this.vp.vw - 44) / 2)
+    this.padBottomY = this.vp.vh - 44
+
+    this.panL = this.vp.ox > 0
+    this.panR = this.vp.ox < maxOx(this.vp)
+    this.panU = this.vp.oy > 0
+    this.panD = this.vp.oy < maxOy(this.vp)
+  },
+
+  /* ---------------- 渲染同步 ---------------- */
+  sync() {
+    const st = this.st
+    if (!st) return
+    // 占位：格子 -> 该格上的玩家与数量（同格只可能是一种颜色）
+    const occ = {}
+    for (let p = 1; p <= 4; p++) {
+      for (let k = 0; k < 4; k++) {
+        const pos = st.planes[(p - 1) * 4 + k]
+        const xy = planeXY(p, k, pos)
+        const i = xy[0] * SIZE + xy[1]
+        if (!occ[i]) occ[i] = { p: p, n: 0 }
+        occ[i].n++
+      }
+    }
+    // 可动飞机所在格
+    const movable = {}
+    if (st.rolled && !st.winner && !this.isAiTurn()) {
+      const ms = legalMoves(st)
+      for (let j = 0; j < ms.length; j++) {
+        const k = ms[j].plane
+        const pos = st.planes[(st.turn - 1) * 4 + k]
+        const xy = planeXY(st.turn, k, pos)
+        const i = xy[0] * SIZE + xy[1]
+        if (movable[i] === undefined) movable[i] = ms[j]
+      }
+    }
+    this.movable = movable
+
+    // visibleCells 只透传 cls，棋子圆点等附加信息先按格号缓存再合并
+    const extras = {}
+    this.cells = visibleCells(this.vp, function (x, y) {
+      const i = y * SIZE + x
+      const meta = LAYOUT[i]
+      let cls = 'vcell'
+      if (meta.t === 4) cls += ' bs bs' + meta.o
+      else if (meta.t === 2) cls += ' hm hm' + meta.o
+      else if (meta.t === 3) cls += ' ctr'
+      else if (meta.t === 1) {
+        cls += ' rg c' + meta.o
+        if (FLY_RING[meta.ri]) cls += ' fly'
+        if (meta.ri === START[meta.o]) cls += ' st'
+      }
+      if (movable[i] !== undefined) cls += ' movable'
+      if (st.last >= 0) {
+        const lp = Math.floor(st.last / 4) + 1
+        const lk = st.last % 4
+        const xy = planeXY(lp, lk, st.planes[st.last])
+        if (xy[0] * SIZE + xy[1] === i) cls += ' last'
+      }
+      const o = occ[i]
+      const isStart = meta.t === 1 && meta.ri === START[meta.o]
+      extras[i] = {
+        dn: o ? o.n : 0,
+        dmany: !!(o && o.n > 1),
+        dcls: o ? ('p' + o.p) : '',
+        mk: (isStart && !o) ? '▲' : ''
+      }
+      return { cls: cls }
+    }).map(function (c) {
+      const e = extras[c.i] || {}
+      c.dn = e.dn || 0
+      c.dmany = e.dmany || false
+      c.dcls = e.dcls || ''
+      c.mk = e.mk || ''
+      return c
+    })
+    this.updatePanState()
+    this.updateHint()
+  },
+
+  updateHint() {
+    const st = this.st
+    if (!st) return
+    const done = doneCounts(st)
+    this.sub = '骰子 ' + (st.dice || '-') + ' · 红' + done[0] + ' 黄' + done[1] + ' 蓝' + done[2] + ' 绿' + done[3]
+    if (st.winner) {
+      const r = result(st)
+      this.hint = r.text
+      this.warn = false
+      this.canRoll = false
+      return
+    }
+    const cur = CNAME[st.turn] + '方'
+    if (this.isAiTurn()) {
+      this.hint = '电脑（' + cur + '）思考中…'
+      this.warn = false
+      this.canRoll = false
+    } else if (!st.rolled) {
+      this.hint = '当前 ' + cur + ' · 请掷骰子'
+      this.warn = false
+      this.canRoll = !this.busy
+    } else {
+      const ms = legalMoves(st)
+      if (!ms.length) { this.hint = cur + ' 无子可走'; this.warn = true }
+      else if (ms.length === 1) { this.hint = cur + ' 自动走子…'; this.warn = false }
+      else { this.hint = cur + ' 请选择飞机'; this.warn = true }
+      this.canRoll = false
+    }
+  },
+
+  /* ---------------- 掷骰 ---------------- */
+  rollDice() {
+    const st = this.st
+    if (!st || this.busy || this.dialog || st.winner || st.rolled || this.isAiTurn()) return
+    this.$app.$def.tap()
+    roll(st)
+    this.sync()
+    this.persist()
+    const ms = legalMoves(st)
+    if (!ms.length) {
+      this.busy = true
+      setTimeout(() => {
+        if (!this.st || this.st.winner) { this.busy = false; return }
+        pass(this.st)
+        this.busy = false
+        this.sync()
+        this.persist()
+        if (this.isAiTurn()) this.scheduleAi()
+      }, 340)
+      return
+    }
+    if (ms.length === 1) {
+      this.busy = true
+      setTimeout(() => { this.applyMove(ms[0]) }, 260)
+    }
+    // 多枚可动：等待点击棋盘选择
+  },
+
+  tap(i) {
+    const st = this.st
+    if (!st || this.busy || this.dialog || st.winner || this.isAiTurn()) return
+    if (!st.rolled) return
+    if (this.movable[i] === undefined) return
+    this.$app.$def.tap()
+    this.applyMove(this.movable[i])
+  },
+
+  applyMove(mv) {
+    const st = this.st
+    if (!st || st.winner) { this.busy = false; return }
+    if (!apply(st, mv, st.turn)) { this.busy = false; this.sync(); return }
+    this.busy = false
+    this.sync()
+    this.persist()
+    if (st.winner) { this.showResult(); return }
+    if (this.isAiTurn()) this.scheduleAi()
+  },
+
+  /* ---------------- AI ---------------- */
+  scheduleAi() {
+    if (!this.isAiTurn()) return
+    this.busy = true
+    const delay = 240 + Math.floor(Math.random() * 160) // 240~400ms
+    setTimeout(() => { this.aiStep() }, delay)
+  },
+
+  aiStep() {
+    const st = this.st
+    if (!st || st.winner || !this.isAiTurn()) { this.busy = false; return }
+    if (!st.rolled) {
+      roll(st)
+      this.sync()
+      this.persist()
+      setTimeout(() => { this.aiStep() }, 260)
+      return
+    }
+    const mv = aiMove(st, this.lv)
+    if (!mv) {
+      pass(st)
+      this.busy = false
+      this.sync()
+      this.persist()
+      setTimeout(() => { if (this.isAiTurn()) this.scheduleAi() }, 200)
+      return
+    }
+    if (!apply(st, mv, st.turn)) { this.busy = false; return }
+    this.busy = false
+    this.sync()
+    this.persist()
+    if (st.winner) { this.showResult(); return }
+    if (this.isAiTurn()) this.scheduleAi()
+    else this.updateHint()
+  },
+
+  showResult() {
+    const st = this.st
+    const r = result(st)
+    if (this.mode === 'ai') {
+      this.dialogTitle = st.winner === 1 ? '你获胜！' : '电脑获胜'
+      this.dialogBody = st.winner === 1 ? '四架飞机全部到达终点' : (r.text + '，再来一局？')
+    } else {
+      this.dialogTitle = r.text
+      this.dialogBody = '四架飞机全部到达终点'
+    }
+    this.dialog = true
+  },
+
+  persist() {
+    saveKey(SAVE, JSON.stringify(this.st), null)
+  },
+
+  askRestart() {
+    this.askTitle = '重新开始'
+    this.askBody = '当前棋局将被清空'
+    this.askKind = 'restart'
+    this.ask = true
+  },
+
+  confirmExit() {
+    if (this.st && !this.st.winner && this.st.moves > 0) {
+      this.askTitle = '退出对局'
+      this.askBody = '本局进度已自动保存'
+      this.askKind = 'exit'
+      this.ask = true
+    } else {
+      this.exit()
+    }
+  },
+
+  askYes() {
+    const k = this.askKind
+    this.ask = false
+    if (k === 'exit') this.exit()
+    else if (k === 'restart') { dropKey(SAVE, null); this.restart() }
+  },
+
+  askNo() { this.ask = false },
+
+  again() { dropKey(SAVE, null); this.restart() },
+
+  exit() { router.back() }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .vbox { background-color: #20242b; }
+
+  /* 状态条竖排、自动高度：提示与统计各占一行，不互相挤压换行 */
+  .status {
+    flex-direction: column;
+    align-items: flex-start;
+    height: auto;
+  }
+
+  /* 基地 / 终点跑道 / 中央 */
+  .bs { opacity: 0.55; }
+  .bs1 { background-color: #7a3b3b; }
+  .bs2 { background-color: #7a6a2f; }
+  .bs3 { background-color: #33557a; }
+  .bs4 { background-color: #2f6b47; }
+
+  .hm { opacity: 0.9; }
+  .hm1 { background-color: #b04646; }
+  .hm2 { background-color: #b0952f; }
+  .hm3 { background-color: #3f7ac0; }
+  .hm4 { background-color: #3f9a63; }
+
+  .ctr { background-color: #2b3a4a; }
+
+  /* 环格：四方颜色 */
+  .rg { border-radius: 2px; }
+  .c1 { background-color: #6e3a3a; }
+  .c2 { background-color: #6e6230; }
+  .c3 { background-color: #33506e; }
+  .c4 { background-color: #336149; }
+  .st { background-color: #e6e6e6; }
+  .fly { border-width: 1px; border-style: dashed; border-color: #d8c49a; }
+  .movable { background-color: #c9a86a; }
+  .last { background-color: #4caf50; }
+
+  /* 飞机圆点（随格子缩放） */
+  .dot {
+    width: 66%;
+    height: 66%;
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+  }
+  .p1 { background-color: #e05252; }
+  .p2 { background-color: #e8b84b; }
+  .p3 { background-color: #4b8de0; }
+  .p4 { background-color: #4cb06a; }
+  .dot-n {
+    color: #0d0f12;
+    font-weight: bold;
+  }
+  .mk {
+    color: #0d0f12;
+    font-weight: bold;
+  }
+</style>

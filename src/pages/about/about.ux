@@ -1,0 +1,102 @@
+<template>
+  <div class="page">
+    <div class="header">
+      <text class="t-back" style="font-size: {{fs(14, fontTick)}}px" @click="back">返回</text>
+      <text class="t-title" style="font-size: {{fs(19, fontTick)}}px">关于</text>
+      <text class="t-back" style="font-size: {{fs(14, fontTick)}}px"></text>
+    </div>
+
+    <div class="top">
+      <image class="logo" src="/common/logo.png"></image>
+      <text class="name" style="font-size: {{fs(20, fontTick)}}px">棋类博弈</text>
+      <text class="t-sub" style="font-size: {{fs(12, fontTick)}}px">版本 {{version}}</text>
+    </div>
+
+    <div class="info">
+      <div class="info-row">
+        <text class="t-sub" style="font-size: {{fs(13, fontTick)}}px">棋种</text>
+        <text class="k" style="font-size: {{fs(13, fontTick)}}px">八种</text>
+      </div>
+      <div class="info-row">
+        <text class="t-sub" style="font-size: {{fs(13, fontTick)}}px">模式</text>
+        <text class="k" style="font-size: {{fs(13, fontTick)}}px">人机 / 双人</text>
+      </div>
+      <div class="info-row">
+        <text class="t-sub" style="font-size: {{fs(13, fontTick)}}px">作者</text>
+        <text class="k" style="font-size: {{fs(13, fontTick)}}px">模糊二维码byxz</text>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="qr-wrap">
+      <text class="t-info" style="font-size: {{fs(11, fontTick)}}px">模糊二维码byxz</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { fs, ensureScale } from '../../common/core/ui'
+
+export default {
+  fs: fs,
+
+  private: {
+    version: '5.3.1',
+    fontTick: 0
+  },
+
+  onInit() {
+    ensureScale(() => { this.fontTick++ })
+  },
+
+  back() {
+    router.back()
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .top {
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 10px;
+  }
+
+  .logo { width: 62px; height: 62px; }
+
+  .name {
+    font-weight: bold;
+    color: #f0e6d2;
+    margin-top: 6px;
+  }
+
+  .info {
+    width: 100%;
+    flex-direction: column;
+    margin-top: 14px;
+  }
+
+  .info-row {
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+    height: 26px;
+    align-items: center;
+  }
+
+  .k { color: #e8e8e8; }
+
+  .spacer { flex: 1; }
+
+  .qr-wrap {
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    padding-bottom: 4px;
+  }
+
+</style>

@@ -1,0 +1,21 @@
+# ---------- 依赖与构建产物 ----------
+node_modules/
+dist/
+# 工具链的中间产物目录（里面会被拷进一份完整素材，必须排除）
+build/
+.temp_*/
+*.log
+
+# ---------- 工具产生的临时目录 ----------
+.ct-*/
+tools/preview/.work/
+# 预览截图是基于本机素材渲染的，里面含被排除的第三方素材
+tools/preview/out/
+
+# ---------- 第三方素材：原版《方寸棋阁》包内资源 ----------
+# 版权属原作者（YDNAC），不随本仓库分发。
+# 详见 docs/素材来源.md（含"自备素材"说明与自制占位图 docs/placeholder/）。
+src/common/chess/
+src/common/map/
+src/common/ui/
+src/common/logo.png

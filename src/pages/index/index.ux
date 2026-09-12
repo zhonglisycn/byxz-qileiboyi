@@ -1,0 +1,67 @@
+<template>
+  <div class="page">
+    <div class="header">
+      <text style="font-size: {{fs(12, fontTick)}}px" class="subtitle"></text>
+      <text style="font-size: {{fs(19, fontTick)}}px" class="title">棋类博弈</text>
+      <text style="font-size: {{fs(12, fontTick)}}px" class="subtitle"></text>
+    </div>
+
+    <div class="menu-grid">
+      <div class="menu-item" for="{{games}}" tid="key" @click="open($item.key)">
+        <image class="menu-icon" src="{{$item.icon}}"></image>
+        <text style="font-size: {{fs(13, fontTick)}}px" class="menu-text">{{$item.name}}</text>
+      </div>
+    </div>
+
+    <div class="btn btn-quiet more-btn" @click="goMore">
+      <text style="font-size: {{fs(16, fontTick)}}px" class="t-btn">更多</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { fs, ensureScale } from '../../common/core/ui'
+
+export default {
+  fs: fs,
+  private: {
+    games: [],
+    ver: 'v5.1',
+    tip: '八种棋类 · 人机 / 双人',
+    fontTick: 0
+  },
+
+  onInit() {
+    ensureScale(() => { this.fontTick++ })
+    this.games = this.$app.$def.GAMES
+  },
+
+  open(key) {
+    this.$app.$def.tap()
+    router.push({
+      uri: 'pages/menu',
+      params: { game: key }
+    })
+  },
+
+  goMore() {
+    router.push({ uri: 'pages/more' })
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .more-btn {
+    width: 100%;
+    flex-shrink: 0;
+    margin-top: 6px;
+  }
+
+  .tip-text {
+    font-size: 11px;
+    color: #6b7078;
+  }
+</style>

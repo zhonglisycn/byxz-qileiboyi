@@ -1,0 +1,14 @@
+{
+  "name": "fangcun-chess",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "aiot build --enable-jsc",
+    "release": "aiot release --enable-jsc",
+    "start": "aiot start"
+  },
+  "devDependencies": {
+    "@aiot-toolkit/jsc": "^1.0.9",
+    "aiot-toolkit": "2.0.5"
+  }
+}

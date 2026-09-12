@@ -1,0 +1,86 @@
+{
+  "package": "com.byxz.qileiboyi",
+  "name": "棋类博弈",
+  "versionName": "5.3.1",
+  "versionCode": 531,
+  "minPlatformVersion": 1000,
+  "icon": "/common/logo.png",
+  "deviceTypeList": [
+    "watch"
+  ],
+  "features": [
+    {
+      "name": "system.router"
+    },
+    {
+      "name": "system.prompt"
+    },
+    {
+      "name": "system.device"
+    },
+    {
+      "name": "system.storage"
+    },
+    {
+      "name": "system.vibrator"
+    },
+    {
+      "name": "system.brightness"
+    }
+  ],
+  "permissions": [
+    {
+      "name": "hapjs.permission.DEVICE_INFO"
+    }
+  ],
+  "config": {
+    "logLevel": "log",
+    "designWidth": "device-width"
+  },
+  "router": {
+    "entry": "pages/index",
+    "pages": {
+      "pages/index": {
+        "component": "index"
+      },
+      "pages/menu": {
+        "component": "menu"
+      },
+      "pages/rules": {
+        "component": "rules"
+      },
+      "pages/more": {
+        "component": "more"
+      },
+      "pages/about": {
+        "component": "about"
+      },
+      "pages/ttt": {
+        "component": "ttt"
+      },
+      "pages/wzq": {
+        "component": "wzq"
+      },
+      "pages/wq": {
+        "component": "wq"
+      },
+      "pages/xq": {
+        "component": "xq"
+      },
+      "pages/gjxq": {
+        "component": "gjxq"
+      },
+      "pages/jq": {
+        "component": "jq"
+      },
+      "pages/dsq": {
+        "component": "dsq"
+      },
+      "pages/fxq": {
+        "component": "fxq"
+      }
+    }
+  },
+  "minAPILevel": 1,
+  "description": "八种棋类 · 人机 / 双人 · 模糊二维码byxz"
+}

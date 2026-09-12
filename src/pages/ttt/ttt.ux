@@ -1,0 +1,326 @@
+<template>
+  <div class="page">
+    <div class="header">
+      <text style="font-size: {{fs(14, fontTick)}}px" class="back" @click="confirmExit">返回</text>
+      <text style="font-size: {{fs(19, fontTick)}}px" class="title">井字棋</text>
+      <text style="font-size: {{fs(14, fontTick)}}px" class="back" @click="askRestart">重开</text>
+    </div>
+
+    <div class="status">
+      <text style="font-size: {{fs(13, fontTick)}}px" class="status-text {{hintWarn ? 'status-warn' : ''}}">{{hint}}</text>
+      <text style="font-size: {{fs(12, fontTick)}}px" class="subtitle">{{modeText}}</text>
+    </div>
+
+    <div class="viewport">
+      <div class="vbox" style="width: {{vp.vw}}px; height: {{vp.vh}}px">
+        <div class="vcell {{$item.cls}}" for="{{cells}}" tid="i"
+             style="left: {{$item.x}}px; top: {{$item.y}}px; width: {{$item.w}}px; height: {{$item.h}}px"
+             @click="tap($item.i)">
+          <text style="color: #e8e8e8; font-size: {{fs(34, fontTick)}}px" class="mark {{$item.markCls}}">{{$item.mark}}</text>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <div class="btn btn-quiet grow" @click="undo">
+        <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">悔棋</text>
+      </div>
+      <div class="v-gap"></div>
+      <div class="btn btn-quiet grow" @click="askRestart">
+        <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">重开</text>
+      </div>
+    </div>
+
+    <div class="mask" if="{{dialog}}">
+      <div class="dialog">
+        <text style="font-size: {{fs(15, fontTick)}}px" class="dialog-title">{{dialogTitle}}</text>
+        <text style="font-size: {{fs(12, fontTick)}}px" class="dialog-body">{{dialogBody}}</text>
+        <div class="dialog-btn dialog-btn-ok" @click="again">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">再来一局</text>
+        </div>
+        <div class="dialog-btn dialog-btn-cancel" @click="exit">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">返回主页</text>
+        </div>
+      </div>
+    </div>
+
+    <div class="mask" if="{{ask}}">
+      <div class="dialog">
+        <text style="font-size: {{fs(15, fontTick)}}px" class="dialog-title">{{askTitle}}</text>
+        <text style="font-size: {{fs(12, fontTick)}}px" class="dialog-body">{{askBody}}</text>
+        <div class="dialog-btn dialog-btn-ok" @click="askYes">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">确定</text>
+        </div>
+        <div class="dialog-btn dialog-btn-cancel" @click="askNo">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">取消</text>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { fs, ensureScale, makeView, visibleCells } from '../../common/core/ui'
+import { newGame, playKeepHistory, aiMove } from '../../common/core/ttt'
+import { saveKey, loadKey, dropKey } from '../../common/core/util'
+
+const SAVE = 'fc_save_ttt'
+const AI = 2
+
+export default {
+  fs: fs,
+  public: {
+    game: 'ttt',
+    mode: 'ai',
+    level: '1',
+    resume: ''
+  },
+
+  private: {
+    fontTick: 0,
+    cells: [],
+    hint: '',
+    hintWarn: false,
+    modeText: '',
+    dialog: false,
+    dialogTitle: '',
+    dialogBody: '',
+    ask: false,
+    askTitle: '',
+    askBody: '',
+    askKind: '',
+    busy: false,
+    lv: 1,
+    st: null,
+    vp: { vw: 168, vh: 168, ox: 0, oy: 0, cols: 3, rows: 3, cw: 56, ch: 56, visCols: 3, visRows: 3 }
+  },
+
+  onInit() {
+    ensureScale(() => { this.fontTick++ })
+    const app = this.$app.$def
+    const s = app.setup || {}
+    if (this.mode !== 'ai' && this.mode !== 'pvp') this.mode = s.mode || 'ai'
+    if (this.mode === 'fun') this.mode = 'ai'
+    this.lv = parseInt(this.level, 10) || s.level || 1
+    this.modeText = this.mode === 'ai' ? ('人机 · ' + this.levelName()) : '双人'
+    // 井字棋只有 9 格，直接铺满可视区，不需要缩放/平移
+    this.vp = makeView(3, 3, 60, 60, 184, 272)
+
+    if (this.resume) {
+      loadKey(SAVE, (ok, data) => {
+        if (ok && data) {
+          try {
+            this.st = JSON.parse(data)
+            this.sync()
+            if (this.st.winner === 0 && this.mode === 'ai' && this.st.turn === AI) this.scheduleAi()
+            return
+          } catch (e) { console.log('存档解析失败') }
+        }
+        this.restart()
+      })
+    } else {
+      this.restart()
+    }
+  },
+
+  levelName() {
+    const g = this.$app.$def.byKey('ttt')
+    const n = g.levels[this.lv - 1]
+    return n || g.levels[0]
+  },
+
+  restart() {
+    this.st = newGame(1)
+    this.dialog = false
+    this.busy = false
+    this.sync()
+    this.persist()
+  },
+
+  /* ---------------- 渲染同步 ---------------- */
+  sync() {
+    const st = this.st
+    const last = st.last
+    const win = st.winCells || []
+    const v = this.vp
+    this.cells = visibleCells(v, function (x, y) {
+      const i = y * 3 + x
+      let cls = 'vcell'
+      if (x < 2) cls += ' vcell-r'
+      if (y < 2) cls += ' vcell-b'
+      if (win.indexOf(i) >= 0) cls += ' last-move'
+      else if (i === last) cls += ' last-move'
+      const val = st.board[i]
+      return {
+        cls: cls,
+        mark: val === 1 ? 'X' : (val === 2 ? 'O' : ''),
+        markCls: val === 1 ? 'mark-x' : (val === 2 ? 'mark-o' : '')
+      }
+    })
+    this.updateHint()
+  },
+
+  updateHint() {
+    const st = this.st
+    if (st.winner === 1 || st.winner === 2) {
+      const who = st.winner === 1 ? 'X' : 'O'
+      if (this.mode === 'ai') {
+        this.hint = st.winner === 1 ? '你获胜！' : 'AI 获胜'
+      } else {
+        this.hint = who + ' 方获胜！'
+      }
+      this.hintWarn = false
+      this.showResult()
+    } else if (st.winner === 3) {
+      this.hint = '平局'
+      this.hintWarn = false
+      this.showResult()
+    } else {
+      this.hintWarn = false
+      if (this.mode === 'ai') {
+        this.hint = st.turn === 1 ? '你的回合 (X)' : 'AI 思考中…'
+      } else {
+        this.hint = '当前玩家: ' + (st.turn === 1 ? 'X' : 'O')
+      }
+    }
+  },
+
+  showResult() {
+    const st = this.st
+    if (st.winner === 3) {
+      this.dialogTitle = '平局'
+      this.dialogBody = '九格已满，双方都未连成三子'
+    } else {
+      const me = this.mode === 'ai'
+      if (me) {
+        this.dialogTitle = st.winner === 1 ? '你获胜！' : '你输了'
+        this.dialogBody = st.winner === 1 ? '三子连珠，漂亮' : 'AI 连成三子，再来一局？'
+      } else {
+        this.dialogTitle = (st.winner === 1 ? 'X' : 'O') + ' 方获胜！'
+        this.dialogBody = '三子连珠'
+      }
+    }
+    this.dialog = true
+  },
+
+  /* ---------------- 交互 ---------------- */
+  tap(i) {
+    const st = this.st
+    if (this.busy || this.dialog || st.winner !== 0) return
+    if (this.mode === 'ai' && st.turn === AI) return
+    if (st.board[i] !== 0) return
+    this.$app.$def.tap()
+    playKeepHistory(st, i)
+    this.sync()
+    this.persist()
+    if (st.winner === 0 && this.mode === 'ai' && st.turn === AI) this.scheduleAi()
+  },
+
+  scheduleAi() {
+    this.busy = true
+    setTimeout(() => {
+      const st = this.st
+      if (!st || st.winner !== 0 || st.turn !== AI) { this.busy = false; return }
+      const mv = aiMove(st, this.lv)
+      if (mv >= 0) {
+        playKeepHistory(st, mv)
+        this.busy = false
+        this.sync()
+        this.persist()
+      } else {
+        this.busy = false
+      }
+    }, 170)
+  },
+
+  undo() {
+    const st = this.st
+    if (this.busy || !st.history || !st.history.length) return
+    this.$app.$def.tap()
+    this.dialog = false
+    const back = (this.mode === 'ai' && st.history.length >= 2) ? 2 : 1
+    for (let i = 0; i < back; i++) {
+      const h = st.history.pop()
+      if (!h) break
+      st.board[h.idx] = 0
+      st.turn = h.p
+    }
+    st.winner = 0
+    st.winCells = []
+    st.moves = st.history.length
+    st.last = st.history.length ? st.history[st.history.length - 1].idx : -1
+    if (this.mode === 'ai' && st.turn !== 1 && st.history.length) {
+      const h = st.history.pop()
+      st.board[h.idx] = 0
+      st.turn = h.p
+      st.moves = st.history.length
+      st.last = st.history.length ? st.history[st.history.length - 1].idx : -1
+    }
+    this.sync()
+    this.persist()
+  },
+
+  persist() {
+    saveKey(SAVE, JSON.stringify(this.st), null)
+  },
+
+  askRestart() {
+    this.askTitle = '重新开始'
+    this.askBody = '当前棋局将被清空'
+    this.askKind = 'restart'
+    this.ask = true
+  },
+
+  confirmExit() {
+    if (this.st && this.st.winner === 0 && this.st.moves > 0) {
+      this.askTitle = '退出对局'
+      this.askBody = '本局进度已自动保存'
+      this.askKind = 'exit'
+      this.ask = true
+    } else {
+      this.exit()
+    }
+  },
+
+  askYes() {
+    const k = this.askKind
+    this.ask = false
+    if (k === 'exit') {
+      this.exit()
+    } else if (k === 'restart') {
+      dropKey(SAVE, null)
+      this.restart()
+    }
+  },
+
+  askNo() {
+    this.ask = false
+  },
+
+  again() {
+    dropKey(SAVE, null)
+    this.restart()
+  },
+
+  exit() {
+    router.back()
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .vbox {
+    background-color: #d8c49a;
+  }
+
+  .vcell {
+    border-right-color: #6b5836;
+    border-bottom-color: #6b5836;
+  }
+
+  .mark-x { color: #c62828; }
+  .mark-o { color: #1565c0; }
+</style>

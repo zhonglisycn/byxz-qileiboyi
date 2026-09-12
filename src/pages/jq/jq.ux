@@ -1,0 +1,580 @@
+<template>
+  <div class="page">
+    <div class="header">
+      <text style="font-size: {{fs(14, fontTick)}}px" class="back" @click="confirmExit">返回</text>
+      <text style="font-size: {{fs(19, fontTick)}}px" class="title">军棋</text>
+      <text style="font-size: {{fs(14, fontTick)}}px" class="back" @click="askRestart">重开</text>
+    </div>
+
+    <div class="status">
+      <text style="font-size: {{fs(13, fontTick)}}px" class="status-text {{hintWarn ? 'status-warn' : ''}}">{{hint}}</text>
+      <text style="font-size: {{fs(12, fontTick)}}px" class="subtitle">{{infoText}}</text>
+    </div>
+
+    <div class="viewport">
+      <!-- 缩放胶囊：在棋盘上方的空白区，不挡棋子 -->
+      <div class="zoom-chip" @click="cycleZoom">
+        <text class="zoom-chip-text">{{zoomName}}</text>
+      </div>
+      <div class="vbox" style="width: {{vp.vw}}px; height: {{vp.vh}}px">
+        <div class="vcell {{$item.cls}}" for="{{cells}}" tid="i"
+             style="left: {{$item.x}}px; top: {{$item.y}}px; width: {{$item.w}}px; height: {{$item.h}}px"
+             @click="tap($item.i)">
+          <image class="piece" src="{{$item.img}}" if="{{$item.back === 0}}"></image>
+          <div class="pback" if="{{$item.back === 1}}"></div>
+        </div>
+        <!-- 悬浮方向键：放大后贴在棋盘四边，44×44 好点 -->
+        <div class="pad-overlay" style="left: 0px; top: {{padMidTop}}px" if="{{panL}}" @click="doPan(-1, 0)">
+          <text class="pad-glyph">‹</text>
+        </div>
+        <div class="pad-overlay" style="left: {{padRightX}}px; top: {{padMidTop}}px" if="{{panR}}" @click="doPan(1, 0)">
+          <text class="pad-glyph">›</text>
+        </div>
+        <div class="pad-overlay" style="left: {{padMidX}}px; top: 0px" if="{{panU}}" @click="doPan(0, -1)">
+          <text class="pad-glyph">˄</text>
+        </div>
+        <div class="pad-overlay" style="left: {{padMidX}}px; top: {{padBottomY}}px" if="{{panD}}" @click="doPan(0, 1)">
+          <text class="pad-glyph">˅</text>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row" style="margin-top: 7px;">
+      <div class="btn btn-primary grow" if="{{placing}}" @click="finishSetup">
+        <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">完成布阵</text>
+      </div>
+      <div class="btn btn-quiet grow" if="{{!placing}}" @click="undo">
+        <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">悔棋</text>
+      </div>
+      <div class="v-gap"></div>
+      <div class="btn btn-quiet grow" @click="askRestart">
+        <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">重开</text>
+      </div>
+    </div>
+
+    <div class="mask" if="{{dialog}}">
+      <div class="dialog">
+        <text style="font-size: {{fs(15, fontTick)}}px" class="dialog-title">{{dialogTitle}}</text>
+        <text style="font-size: {{fs(12, fontTick)}}px" class="dialog-body">{{dialogBody}}</text>
+        <div class="dialog-btn dialog-btn-ok" @click="again">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">再来一局</text>
+        </div>
+        <div class="dialog-btn dialog-btn-cancel" @click="exit">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">返回主页</text>
+        </div>
+      </div>
+    </div>
+
+    <div class="mask" if="{{ask}}">
+      <div class="dialog">
+        <text style="font-size: {{fs(15, fontTick)}}px" class="dialog-title">{{askTitle}}</text>
+        <text style="font-size: {{fs(12, fontTick)}}px" class="dialog-body">{{askBody}}</text>
+        <div class="dialog-btn dialog-btn-ok" @click="askYes">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">确定</text>
+        </div>
+        <div class="dialog-btn dialog-btn-cancel" @click="askNo">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">取消</text>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { fs, ensureScale, makeView, pan as vpan, visibleCells, maxOx, maxOy } from '../../common/core/ui'
+import * as jq from '../../common/core/junqi'
+import { saveKey, loadKey, dropKey } from '../../common/core/util'
+
+const SAVE = 'fc_save_jq'
+
+// 放大档位：全盘 → 中 → 大（放大后用方向键平移）
+const ZOOMS = [
+  { cw: 34, ch: 22, name: '全盘' },
+  { cw: 34, ch: 34, name: '中' },
+  { cw: 34, ch: 46, name: '大' },
+]
+
+export default {
+  fs: fs,
+  public: {
+    game: 'jq',
+    mode: 'ai',
+    level: '1',
+    variant: 'hidden',
+    resume: ''
+  },
+
+  private: {
+    fontTick: 0,
+    cells: [],
+    hint: '',
+    hintWarn: false,
+    infoText: '',
+    dialog: false,
+    dialogTitle: '',
+    dialogBody: '',
+    ask: false,
+    askTitle: '',
+    askBody: '',
+    askKind: '',
+    busy: false,
+    placing: false,
+    sel: -1,
+    swapA: -1,
+    targets: {},
+    lv: 1,
+    st: null,
+    mySide: jq.RED,
+    vp: { vw: 176, vh: 336, ox: 0, oy: 0, visCols: 5, visRows: 12, cols: 5, rows: 12, cw: 34, ch: 28, padX: 0, padY: 0 },
+    zi: 0,
+    zoomName: '全盘',
+    panL: false, panR: false, panU: false, panD: false,
+    padMidTop: 0, padRightX: 0, padMidX: 0, padBottomY: 0,
+  },
+
+  onInit() {
+    ensureScale(() => { this.fontTick++ })
+    const app = this.$app.$def
+    const s = app.setup || {}
+    if (this.mode !== 'ai' && this.mode !== 'pvp') this.mode = s.mode || 'ai'
+    this.lv = parseInt(this.level, 10) || s.level || 1
+    const v = (this.variant === 'flip' || this.variant === 'hidden') ? this.variant : (s.variant || 'hidden')
+    this.buildView()
+
+    if (this.resume) {
+      loadKey(SAVE, (ok, data) => {
+        if (ok && data) {
+          try { this.restore(JSON.parse(data), v); return } catch (e) { console.log('存档解析失败') }
+        }
+        this.restart(v)
+      })
+    } else {
+      this.restart(v)
+    }
+  },
+
+  /* ---------------- 视口 ---------------- */
+  buildView() {
+    const z = ZOOMS[this.zi]
+    this.vp = makeView(jq.W, jq.H, z.cw, z.ch, 184, 272)
+    this.zoomName = z.name
+  },
+
+  cycleZoom() {
+    this.$app.$def.tap()
+    const cx = this.vp.ox + Math.floor(this.vp.visCols / 2)
+    const cy = this.vp.oy + Math.floor(this.vp.visRows / 2)
+    this.zi = (this.zi + 1) % ZOOMS.length
+    this.buildView()
+    this.vp.ox = Math.max(0, Math.min(maxOx(this.vp), cx - Math.floor(this.vp.visCols / 2)))
+    this.vp.oy = Math.max(0, Math.min(maxOy(this.vp), cy - Math.floor(this.vp.visRows / 2)))
+    this.sync()
+  },
+
+  doPan(dh, dv) {
+    if (!vpan(this.vp, dh, dv)) return
+    this.$app.$def.tap()
+    this.sync()
+  },
+
+  updatePanState() {
+    this.padMidTop = Math.round((this.vp.vh - 44) / 2)
+    this.padRightX = this.vp.vw - 44
+    this.padMidX = Math.round((this.vp.vw - 44) / 2)
+    this.padBottomY = this.vp.vh - 44
+
+    this.panL = this.vp.ox > 0
+    this.panR = this.vp.ox < maxOx(this.vp)
+    this.panU = this.vp.oy > 0
+    this.panD = this.vp.oy < maxOy(this.vp)
+  },
+
+  restore(save, v) {
+    if (!save || !save.st) { this.restart(v); return }
+    this.st = save.st
+    this.lv = save.lv || this.lv
+    this.placing = !!save.placing
+    this.dialog = false
+    this.busy = false
+    this.sel = -1
+    this.swapA = -1
+    this.targets = {}
+    this.sync()
+    if (this.st.over) this.showResult()
+    else if (!this.placing && this.isAiTurn()) this.scheduleAi()
+  },
+
+  restart(v) {
+    const variant = v || this.st && this.st.variant || 'hidden'
+    this.st = jq.newGame({ variant: variant })
+    // 玩家执下半场（红）
+    this.mySide = jq.RED
+    this.placing = variant === 'hidden'
+    this.dialog = false
+    this.busy = false
+    this.sel = -1
+    this.swapA = -1
+    this.targets = {}
+    this.sync()
+    this.persist()
+  },
+
+  isAiTurn() {
+    if (this.mode !== 'ai') return false
+    const g = this.st
+    if (g.variant === 'flip') {
+      const side = g.colors[g.turn]
+      return side !== this.mySide
+    }
+    return g.turn !== this.mySide
+  },
+
+  /* ---------------- 渲染 ---------------- */
+  sync() {
+    const g = this.st
+    const self = this
+    this.cells = visibleCells(this.vp, function (x, y) {
+      const i = y * jq.W + x
+      let cls = 'vcell'
+      if (x < jq.W - 1) cls += ' vcell-r'
+      if (y < jq.H - 1) cls += ' vcell-b'
+      if (y === 5) cls += ' gap-b'                 // 上半场前沿下方留出「山界」
+      if (jq.isCamp(i)) cls += ' camp'
+      if (jq.isHq(i)) cls += ' hq'
+      if (i === self.sel || i === self.swapA) cls += ' sele'
+      else if (self.targets[i]) cls += ' can'
+      else if (g.last && (i === g.last.from || i === g.last.to)) cls += ' last'
+      return { cls: cls, img: self.imageAt(i), back: self.isBack(i) }
+    })
+    this.updatePanState()
+
+    if (g.over) {
+      this.hint = jq.result(g).text
+    } else if (this.placing) {
+      this.hint = this.swapA >= 0 ? '再点一个己方棋子交换位置' : '点两个己方棋子交换，或直接完成布阵'
+    } else if (g.lastBattle && g.lastBattle.text) {
+      this.hint = g.lastBattle.text
+    } else if (g.variant === 'flip' && !g.colors[g.turn]) {
+      this.hint = '请翻开一枚棋子定色'
+    } else {
+      const side = g.variant === 'flip' ? g.colors[g.turn] : g.turn
+      this.hint = (side === this.mySide ? '你' : (this.mode === 'ai' ? '电脑' : '对手')) + '行棋'
+      if (this.busy) this.hint = '电脑思考中…'
+    }
+    this.infoText = this.buildInfo()
+  },
+
+  buildInfo() {
+    const g = this.st
+    let mine = 0
+    let foe = 0
+    for (let i = 0; i < g.board.length; i++) {
+      const p = g.board[i]
+      if (!p) continue
+      const s = jq.sideOf(p)
+      if (g.variant === 'flip') {
+        if (g.colors[this.mySide] === s) mine++
+        else if (g.colors[this.mySide]) foe++
+      } else if (s === this.mySide) mine++
+      else foe++
+    }
+    if (this.mode === 'pvp') return '红 ' + mine + ' · 黑 ' + foe
+    return '我方 ' + mine + ' · 敌方 ' + foe
+  },
+
+  /** 0 不显示 1 显示背面 */
+  isBack(i) {
+    const g = this.st
+    const p = g.board[i]
+    if (!p) return 0
+    const s = jq.sideOf(p)
+    if (g.variant === 'flip') return g.faceUp[i] ? 0 : 1
+    // 暗棋：对方的子除非已亮明，否则背面
+    if (s === this.mySide) return 0
+    return g.revealed[i] ? 0 : 1
+  },
+
+  imageAt(i) {
+    if (this.isBack(i)) return ''
+    return jq.pieceImage(this.st.board[i])
+  },
+
+  showResult() {
+    const g = this.st
+    const r = jq.result(g)
+    if (this.mode === 'ai') {
+      this.dialogTitle = g.winner === this.mySide ? '你获胜！' : '你输了'
+    } else {
+      this.dialogTitle = (g.winner === jq.RED ? '红方' : '黑方') + '获胜！'
+    }
+    this.dialogBody = r.text
+    this.dialog = true
+  },
+
+  /* ---------------- 交互 ---------------- */
+  tap(i) {
+    const g = this.st
+    if (this.busy || this.dialog || g.over) return
+
+    // 布阵阶段：交换己方两子
+    if (this.placing) {
+      const p = g.board[i]
+      if (!p || jq.sideOf(p) !== this.mySide) {
+        this.hintWarn = true
+        this.hint = '只能交换自己的棋子'
+        return
+      }
+      this.$app.$def.tap()
+      if (this.swapA < 0) {
+        this.swapA = i
+        this.hintWarn = false
+        this.sync()
+        return
+      }
+      if (this.swapA === i) {
+        this.swapA = -1
+        this.sync()
+        return
+      }
+      const a = this.swapA
+      const tmp = g.board[a]
+      g.board[a] = g.board[i]
+      g.board[i] = tmp
+      this.swapA = -1
+      this.sync()
+      this.persist()
+      return
+    }
+
+    if (this.isAiTurn()) return
+
+    // 翻翻棋：背面朝下的子点一下就翻开
+    if (g.variant === 'flip' && !g.faceUp[i] && g.board[i]) {
+      this.$app.$def.tap()
+      const ok = jq.apply(g, { flip: i }, g.turn)
+      if (!ok) { this.hint = '这里不能翻棋'; return }
+      this.hintWarn = false
+      this.sync()
+      this.persist()
+      if (g.over) { this.showResult(); return }
+      if (this.isAiTurn()) this.scheduleAi()
+      return
+    }
+
+    const p = g.board[i]
+    if (p && jq.sideOf(p) === this.currentSide()) {
+      if (this.sel === i) { this.sel = -1; this.targets = {}; this.sync(); return }
+      const tg = jq.legalMoves(g, i)
+      if (!tg.length) {
+        this.hintWarn = true
+        this.hint = jq.typeOf(p) === 'M' ? '地雷不能移动' : (jq.typeOf(p) === 'F' ? '军旗不能移动' : '该棋子无处可走')
+        return
+      }
+      this.$app.$def.tap()
+      this.sel = i
+      this.targets = {}
+      for (let k = 0; k < tg.length; k++) this.targets[tg[k]] = true
+      this.hintWarn = false
+      this.hint = '选中 ' + jq.pieceName(p) + ' · 可走 ' + tg.length + ' 处'
+      this.sync()
+      return
+    }
+
+    if (this.sel >= 0) {
+      if (!this.targets[i]) {
+        this.sel = -1
+        this.targets = {}
+        this.sync()
+        return
+      }
+      const from = this.sel
+      this.sel = -1
+      this.targets = {}
+      const player = g.turn
+      const ok = jq.apply(g, { from: from, to: i }, player)
+      if (ok) {
+        this.$app.$def.tap()
+        if (g.board[i]) g.revealed[i] = true          // 交战过的格子亮明
+        if (g.last) g.revealed[g.last.from] = true
+        this.sync()
+        this.persist()
+        if (g.over) { this.showResult(); return }
+        if (this.isAiTurn()) this.scheduleAi()
+      } else {
+        this.hintWarn = true
+        this.hint = '这一步不能走'
+        this.sync()
+      }
+      return
+    }
+    this.hintWarn = false
+    this.hint = '请先选择自己的棋子'
+  },
+
+  currentSide() {
+    const g = this.st
+    return g.variant === 'flip' ? g.colors[g.turn] : g.turn
+  },
+
+  finishSetup() {
+    const err = jq.validateFormation(this.mySide, this.formationFromBoard())
+    if (err) {
+      this.hintWarn = true
+      this.hint = err
+      return
+    }
+    this.$app.$def.tap()
+    this.placing = false
+    this.swapA = -1
+    this.sync()
+    this.persist()
+    if (this.isAiTurn()) this.scheduleAi()
+  },
+
+  /** 从当前盘面反推己方 30 格阵型（供校验） */
+  formationFromBoard() {
+    const g = this.st
+    const cells = jq.cellsOf(this.mySide)
+    const out = []
+    for (let k = 0; k < cells.length; k++) {
+      const p = g.board[cells[k]]
+      out.push(p ? jq.typeOf(p) : '')
+    }
+    return out
+  },
+
+  scheduleAi() {
+    this.busy = true
+    this.sync()
+    setTimeout(() => {
+      const g = this.st
+      if (!g || g.over || !this.isAiTurn()) { this.busy = false; this.sync(); return }
+      const mv = jq.aiMove(g, this.lv)
+      if (!mv) { this.busy = false; this.sync(); return }
+      const player = g.turn
+      const ok = jq.apply(g, mv, player)
+      this.busy = false
+      if (ok) {
+        if (g.last) { g.revealed[g.last.to] = true; g.revealed[g.last.from] = true }
+        if (mv.flip !== undefined) g.revealed[mv.flip] = true
+      }
+      this.sync()
+      this.persist()
+      if (g.over) this.showResult()
+      else if (!ok) this.scheduleAi()
+    }, 190)
+  },
+
+  undo() {
+    const g = this.st
+    if (this.busy || !g.moves.length) return
+    this.$app.$def.tap()
+    this.dialog = false
+    // 退回到自己上一次行动前
+    const back = (this.mode === 'ai' && g.moves.length >= 2) ? 2 : 1
+    for (let k = 0; k < back; k++) {
+      const m = g.moves.pop()
+      if (!m) break
+      if (m.flip !== undefined) {
+        g.faceUp[m.flip] = false
+      } else {
+        const moving = m.suicide ? m.captured : g.board[m.to]
+        g.board[m.from] = moving
+        g.board[m.to] = m.both ? '' : (m.suicide ? '' : (m.captured && !m.suicide ? m.captured : ''))
+        if (m.captured && !m.suicide && !m.both && m.from !== undefined) {
+          // 还原被吃掉的子
+          g.board[m.to] = m.captured
+          g.board[m.from] = moving
+        }
+      }
+      g.turn = (g.variant === 'flip') ? jq.otherSide(g.turn) : jq.otherSide(g.turn)
+    }
+    g.over = false
+    g.winner = 0
+    g.text = ''
+    g.last = null
+    g.lastBattle = null
+    this.sel = -1
+    this.targets = {}
+    this.sync()
+    this.persist()
+  },
+
+  persist() {
+    saveKey(SAVE, JSON.stringify({
+      st: this.st,
+      lv: this.lv,
+      placing: this.placing
+    }), null)
+  },
+
+  askRestart() {
+    this.askTitle = '重新开始'
+    this.askBody = '当前棋局将被清空'
+    this.askKind = 'restart'
+    this.ask = true
+  },
+
+  confirmExit() {
+    if (this.st && !this.st.over && this.st.moves.length) {
+      this.askTitle = '退出对局'
+      this.askBody = '本局进度已自动保存'
+      this.askKind = 'exit'
+      this.ask = true
+    } else {
+      this.exit()
+    }
+  },
+
+  askYes() {
+    const k = this.askKind
+    this.ask = false
+    if (k === 'exit') this.exit()
+    else if (k === 'restart') { dropKey(SAVE, null); this.restart() }
+  },
+
+  askNo() { this.ask = false },
+
+  again() { dropKey(SAVE, null); this.restart() },
+
+  exit() { router.back() }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .vbox { background-color: #2b2f36; }
+
+  /* 状态条竖排、自动高度：长提示换行时不再溢出压住棋盘 */
+  .status {
+    flex-direction: column;
+    align-items: flex-start;
+    height: auto;
+  }
+
+  .vcell {
+    border-right-color: #565c66;
+    border-bottom-color: #565c66;
+  }
+
+  /* 山界：上半场前沿加一条更粗的暗色分隔 */
+  .gap-b {
+    border-bottom-width: 5px;
+    border-bottom-color: #0d0f12;
+  }
+
+  .piece { width: 90%; height: 86%; }
+
+  /* 棋子背面（注意不要用 .back，那个类名属于顶栏按钮） */
+  .pback {
+    width: 78%;
+    height: 72%;
+    border-radius: 3px;
+    background-color: #7a8290;
+    border-left-width: 2px;
+    border-left-color: #98a0ac;
+    border-left-style: solid;
+  }
+</style>

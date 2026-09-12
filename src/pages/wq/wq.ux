@@ -1,0 +1,484 @@
+<template>
+  <div class="page">
+    <div class="header">
+      <text style="font-size: {{fs(14, fontTick)}}px" class="back" @click="confirmExit">返回</text>
+      <text style="font-size: {{fs(19, fontTick)}}px" class="title">围棋</text>
+      <text style="font-size: {{fs(14, fontTick)}}px" class="back" @click="askRestart">重开</text>
+    </div>
+
+    <div class="status">
+      <text style="font-size: {{fs(13, fontTick)}}px" class="status-text {{hintWarn ? 'status-warn' : ''}}">{{hint}}</text>
+      <text style="font-size: {{fs(12, fontTick)}}px" class="subtitle">{{infoText}}</text>
+    </div>
+
+    <div class="viewport">
+      <!-- 缩放胶囊：在棋盘上方的空白区，不挡棋子 -->
+      <div class="zoom-chip" @click="cycleZoom">
+        <text class="zoom-chip-text">{{zoomName}}</text>
+      </div>
+      <div class="vbox" style="width: {{vp.vw}}px; height: {{vp.vh}}px">
+        <div class="vcell {{$item.cls}}" for="{{cells}}" tid="i"
+             style="left: {{$item.x}}px; top: {{$item.y}}px; width: {{$item.w}}px; height: {{$item.h}}px"
+             @click="tap($item.i)">
+          <image class="stone" src="{{$item.img}}" if="{{$item.img}}"></image>
+        </div>
+        <!-- 悬浮方向键：放大后贴在棋盘四边，44×44 好点 -->
+        <div class="pad-overlay" style="left: 0px; top: {{padMidTop}}px" if="{{panL}}" @click="doPan(-1, 0)">
+          <text class="pad-glyph">‹</text>
+        </div>
+        <div class="pad-overlay" style="left: {{padRightX}}px; top: {{padMidTop}}px" if="{{panR}}" @click="doPan(1, 0)">
+          <text class="pad-glyph">›</text>
+        </div>
+        <div class="pad-overlay" style="left: {{padMidX}}px; top: 0px" if="{{panU}}" @click="doPan(0, -1)">
+          <text class="pad-glyph">˄</text>
+        </div>
+        <div class="pad-overlay" style="left: {{padMidX}}px; top: {{padBottomY}}px" if="{{panD}}" @click="doPan(0, 1)">
+          <text class="pad-glyph">˅</text>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row" style="margin-top: 7px;">
+      <div class="btn btn-quiet grow" @click="undo">
+        <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">悔棋</text>
+      </div>
+      <div class="v-gap"></div>
+      <div class="btn btn-quiet grow" @click="pass">
+        <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">弃权</text>
+      </div>
+      <div class="v-gap"></div>
+      <div class="btn {{canEnd ? 'btn-warn' : 'btn-quiet'}} grow" @click="askSettle">
+        <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">结束</text>
+      </div>
+    </div>
+
+    <div class="mask" if="{{dialog}}">
+      <div class="dialog">
+        <text style="font-size: {{fs(15, fontTick)}}px" class="dialog-title">{{dialogTitle}}</text>
+        <text style="font-size: {{fs(12, fontTick)}}px" class="dialog-body">{{dialogBody}}</text>
+        <div class="dialog-btn dialog-btn-ok" @click="again">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">再来一局</text>
+        </div>
+        <div class="dialog-btn dialog-btn-cancel" @click="exit">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">返回主页</text>
+        </div>
+      </div>
+    </div>
+
+    <div class="mask" if="{{ask}}">
+      <div class="dialog">
+        <text style="font-size: {{fs(15, fontTick)}}px" class="dialog-title">{{askTitle}}</text>
+        <text style="font-size: {{fs(12, fontTick)}}px" class="dialog-body">{{askBody}}</text>
+        <div class="dialog-btn dialog-btn-ok" @click="askYes">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">确定</text>
+        </div>
+        <div class="dialog-btn dialog-btn-cancel" @click="askNo">
+          <text style="color: #ffffff; font-size: {{fs(14, fontTick)}}px">取消</text>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { fs, ensureScale, makeView, pan as vpan, visibleCells, maxOx, maxOy } from '../../common/core/ui'
+import * as go from '../../common/core/go'
+import { saveKey, loadKey, dropKey } from '../../common/core/util'
+import { fmtClock } from '../../common/core/rnd'
+
+const SAVE = 'fc_save_wq'
+const AI = go.WHITE      // 玩家执黑先行
+const BOARD = 19
+
+// 放大档位：全盘 → 中 → 大（19×19 全盘用 9px 格子刚好放下）
+const ZOOMS = [
+  { cw: 18, ch: 18, name: '全盘' },
+  { cw: 26, ch: 26, name: '中' },
+  { cw: 36, ch: 36, name: '大' },
+]
+
+export default {
+  fs: fs,
+  public: {
+    game: 'wq',
+    mode: 'ai',
+    level: '1',
+    resume: '',
+    judge: 'capture',
+    target: '10',
+    useTimer: '',
+    baseMinutes: '30',
+    addSeconds: '5'
+  },
+
+  private: {
+    fontTick: 0,
+    cells: [],
+    hint: '',
+    hintWarn: false,
+    infoText: '',
+    dialog: false,
+    dialogTitle: '',
+    dialogBody: '',
+    ask: false,
+    askTitle: '',
+    askBody: '',
+    askKind: '',
+    busy: false,
+    canEnd: false,
+    lv: 1,
+    target: 10,
+    judgeMode: 'capture',
+    timerOn: false,
+    addSec: 0,
+    clocks: { 1: 0, 2: 0 },
+    st: null,
+    tick: null,
+    vp: { vw: 171, vh: 171, ox: 0, oy: 0, visCols: 19, visRows: 19, cols: 19, rows: 19, cw: 9, ch: 9, padX: 0, padY: 0 },
+    zi: 0,
+    zoomName: '全盘',
+    panL: false, panR: false, panU: false, panD: false,
+    padMidTop: 0, padRightX: 0, padMidX: 0, padBottomY: 0,
+  },
+
+  onInit() {
+    ensureScale(() => { this.fontTick++ })
+    const app = this.$app.$def
+    const s = app.setup || {}
+    if (this.mode !== 'ai' && this.mode !== 'pvp' && this.mode !== 'fun') this.mode = s.mode || 'ai'
+    if (this.mode === 'fun') this.mode = 'ai'
+    this.lv = parseInt(this.level, 10) || s.level || 1
+    this.judgeMode = (this.judge === 'remain' || this.judge === 'capture') ? this.judge : (s.judge || 'capture')
+    this.target = parseInt(this.target, 10) || s.target || 10
+    this.timerOn = this.useTimer === '1'
+    this.addSec = parseInt(this.addSeconds, 10) || 0
+    const base = parseInt(this.baseMinutes, 10) || s.baseMinutes || 30
+    this.clocks = { 1: base * 60, 2: base * 60 }
+    this.buildView()
+
+    if (this.resume) {
+      loadKey(SAVE, (ok, data) => {
+        if (ok && data) {
+          try { this.restore(JSON.parse(data)); return } catch (e) { console.log('存档解析失败') }
+        }
+        this.restart()
+      })
+    } else {
+      this.restart()
+    }
+  },
+
+  onShow() { this.startTick() },
+  onHide() { this.stopTick() },
+  onDestroy() { this.stopTick() },
+
+  /* ---------------- 视口 ---------------- */
+  buildView() {
+    const z = ZOOMS[this.zi]
+    this.vp = makeView(BOARD, BOARD, z.cw, z.ch, 184, 272)
+    this.zoomName = z.name
+  },
+
+  cycleZoom() {
+    this.$app.$def.tap()
+    const cx = this.vp.ox + Math.floor(this.vp.visCols / 2)
+    const cy = this.vp.oy + Math.floor(this.vp.visRows / 2)
+    this.zi = (this.zi + 1) % ZOOMS.length
+    this.buildView()
+    // 尽量保持原来的视线中心
+    this.vp.ox = Math.max(0, Math.min(maxOx(this.vp), cx - Math.floor(this.vp.visCols / 2)))
+    this.vp.oy = Math.max(0, Math.min(maxOy(this.vp), cy - Math.floor(this.vp.visRows / 2)))
+    this.sync()
+  },
+
+  doPan(dh, dv) {
+    if (!vpan(this.vp, dh, dv)) return
+    this.$app.$def.tap()
+    this.sync()
+  },
+
+  updatePanState() {
+    this.padMidTop = Math.round((this.vp.vh - 44) / 2)
+    this.padRightX = this.vp.vw - 44
+    this.padMidX = Math.round((this.vp.vw - 44) / 2)
+    this.padBottomY = this.vp.vh - 44
+
+    this.panL = this.vp.ox > 0
+    this.panR = this.vp.ox < maxOx(this.vp)
+    this.panU = this.vp.oy > 0
+    this.panD = this.vp.oy < maxOy(this.vp)
+  },
+
+  restore(save) {
+    if (!save || !save.st) { this.restart(); return }
+    this.st = save.st
+    this.lv = save.lv || this.lv
+    this.judgeMode = save.judgeMode || this.judgeMode
+    this.target = save.target || this.target
+    this.timerOn = !!save.timerOn
+    this.clocks = save.clocks || this.clocks
+    this.dialog = false
+    this.busy = false
+    this.sync()
+    this.startTick()
+    if (this.st.over) this.showResult()
+    else if (this.mode === 'ai' && this.st.turn === AI) this.scheduleAi()
+  },
+
+  restart() {
+    this.st = go.newGame({ board: 19, judge: this.judgeMode, target: this.target })
+    const base = parseInt(this.baseMinutes, 10) || 30
+    this.clocks = { 1: base * 60, 2: base * 60 }
+    this.dialog = false
+    this.busy = false
+    this.canEnd = false
+    this.sync()
+    this.persist()
+    this.startTick()
+  },
+
+  /* ---------------- 计时 ---------------- */
+  startTick() {
+    this.stopTick()
+    this.updateInfo()
+    if (!this.timerOn) return
+    this.tick = setInterval(() => {
+      const g = this.st
+      if (!g || g.over || this.dialog) return
+      this.clocks[g.turn] = this.clocks[g.turn] - 1
+      if (this.clocks[g.turn] <= 0) {
+        this.clocks[g.turn] = 0
+        const loser = g.turn
+        g.over = true
+        g.winner = go.otherColor(loser)
+        const ln = loser === go.BLACK ? '黑方' : '白方'
+        g.text = ln + '超时，' + (g.winner === go.BLACK ? '黑方' : '白方') + '获胜'
+        this.sync()
+        this.persist()
+        return
+      }
+      this.updateInfo()
+    }, 1000)
+  },
+
+  stopTick() {
+    if (this.tick) { clearInterval(this.tick); this.tick = null }
+  },
+
+  updateInfo() {
+    const g = this.st
+    if (!g) { this.infoText = ''; return }
+    if (this.timerOn) {
+      this.infoText = '黑 ' + fmtClock(this.clocks[1]) + ' 白 ' + fmtClock(this.clocks[2])
+      return
+    }
+    if (this.judgeMode === 'capture') {
+      this.infoText = '黑吃 ' + g.captures[1] + ' · 白吃 ' + g.captures[2] + ' · 目标 ' + this.target
+    } else {
+      let b = 0
+      let w = 0
+      for (let i = 0; i < g.board.length; i++) {
+        if (g.board[i] === go.BLACK) b++
+        else if (g.board[i] === go.WHITE) w++
+      }
+      this.infoText = '黑存 ' + b + ' · 白存 ' + w + ' · 目标 ' + this.target
+    }
+  },
+
+  /* ---------------- 渲染 ---------------- */
+  sync() {
+    const g = this.st
+    if (!g) return
+    const n = g.n
+    const last = g.last
+    const ko = g.ko
+    this.cells = visibleCells(this.vp, function (x, y) {
+      const i = y * n + x
+      let cls = 'vcell'
+      if (x < n - 1) cls += ' vcell-r'
+      if (y < n - 1) cls += ' vcell-b'
+      if (i === last) cls += ' last'
+      if (i === ko) cls += ' ko'
+      const v = g.board[i]
+      return {
+        cls: cls,
+        img: v === go.BLACK ? '/common/icon/b.png' : (v === go.WHITE ? '/common/icon/w.png' : '')
+      }
+    })
+    this.updatePanState()
+    if (!g.over) {
+      this.hint = g.turn === go.BLACK ? '黑方行棋' : '白方行棋'
+      if (this.mode === 'ai' && g.turn === AI) this.hint = this.busy ? 'AI 思考中…' : '电脑回合'
+      if (g.ko >= 0) this.hint = '形成劫，禁着点已标记'
+      // 终局收束：只剩单官 / 已无点可下时，直接提示可以结束数子
+      this.canEnd = g.moves.length > 0 && go.endgameReady(g)
+      if (this.canEnd && !this.busy && !(this.mode === 'ai' && g.turn === AI)) {
+        this.hint = '已无单官可下，可直接点「结束」数子'
+      }
+    } else {
+      this.hint = go.result(g).text
+      this.canEnd = false
+    }
+    this.updateInfo()
+  },
+
+  showResult() {
+    const g = this.st
+    const r = go.result(g)
+    if (this.mode === 'ai') {
+      this.dialogTitle = g.winner === go.BLACK ? '你获胜！' : (g.winner === go.WHITE ? '你输了' : '和棋')
+    } else {
+      this.dialogTitle = g.winner === 3 ? '和棋' : ((g.winner === go.BLACK ? '黑方' : '白方') + '获胜！')
+    }
+    this.dialogBody = r.text
+    this.dialog = true
+    this.stopTick()
+  },
+
+  /* ---------------- 交互 ---------------- */
+  tap(i) {
+    const g = this.st
+    if (this.busy || this.dialog || g.over) return
+    if (this.mode === 'ai' && g.turn === AI) return
+    const color = g.turn
+    const r = go.tryMove(g, i, color)
+    if (!r.ok) {
+      this.hintWarn = true
+      this.hint = r.reason
+      return
+    }
+    this.$app.$def.tap()
+    const before = r.captured
+    go.apply(g, { i: i }, color)
+    this.hintWarn = false
+    if (this.timerOn && this.addSec) this.clocks[color] += this.addSec
+    this.sync()
+    this.persist()
+    if (g.over) { this.showResult(); return }
+    if (before > 0) this.hint = '提掉 ' + before + ' 子'
+    if (this.mode === 'ai' && g.turn === AI) this.scheduleAi()
+  },
+
+  scheduleAi() {
+    this.busy = true
+    this.sync()
+    setTimeout(() => {
+      const g = this.st
+      if (!g || g.over || g.turn !== AI) { this.busy = false; this.sync(); return }
+      const mv = go.aiMove(g, this.lv)
+      const ok = go.apply(g, mv, AI)
+      this.busy = false
+      if (this.timerOn && this.addSec) this.clocks[AI] += this.addSec
+      this.sync()
+      this.persist()
+      if (ok && mv.pass) this.hint = 'AI 弃权'
+      if (g.over) this.showResult()
+    }, 170)
+  },
+
+  pass() {
+    const g = this.st
+    if (this.busy || this.dialog || g.over) return
+    if (this.mode === 'ai' && g.turn === AI) return
+    const color = g.turn
+    this.$app.$def.tap()
+    go.apply(g, { pass: true }, color)
+    this.sync()
+    this.persist()
+    if (g.over) { this.showResult(); return }
+    if (this.mode === 'ai' && g.turn === AI) this.scheduleAi()
+  },
+
+  undo() {
+    const g = this.st
+    if (this.busy || !g.moves.length) return
+    this.$app.$def.tap()
+    this.dialog = false
+    go.undo(g)
+    if (this.mode === 'ai' && g.moves.length && g.turn === AI) go.undo(g)
+    this.sync()
+    this.persist()
+    this.startTick()
+  },
+
+  persist() {
+    saveKey(SAVE, JSON.stringify({
+      st: this.st,
+      lv: this.lv,
+      judgeMode: this.judgeMode,
+      target: this.target,
+      timerOn: this.timerOn,
+      clocks: this.clocks
+    }), null)
+  },
+
+  askSettle() {
+    this.askTitle = '结束对局'
+    this.askBody = '按中国规则数子判定胜负'
+    this.askKind = 'settle'
+    this.ask = true
+  },
+
+  askRestart() {
+    this.askTitle = '重新开始'
+    this.askBody = '当前棋局将被清空'
+    this.askKind = 'restart'
+    this.ask = true
+  },
+
+  confirmExit() {
+    if (this.st && !this.st.over && this.st.moves.length) {
+      this.askTitle = '退出对局'
+      this.askBody = '本局进度已自动保存'
+      this.askKind = 'exit'
+      this.ask = true
+    } else {
+      this.exit()
+    }
+  },
+
+  askYes() {
+    const k = this.askKind
+    this.ask = false
+    if (k === 'exit') this.exit()
+    else if (k === 'restart') { dropKey(SAVE, null); this.restart() }
+    else if (k === 'settle') {
+      go.settleGame(this.st)
+      this.sync()
+      this.persist()
+      this.showResult()
+    }
+  },
+
+  askNo() { this.ask = false },
+
+  again() { dropKey(SAVE, null); this.restart() },
+
+  exit() { this.stopTick(); router.back() }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  /* 围棋状态文案较长（吃子/目标、劫提示），竖排避免在固定高度里被裁掉 */
+  .status { flex-direction: column; align-items: flex-start; height: auto; }
+
+  .vbox { background-color: #dcb87a; }
+
+  .vcell {
+    border-right-color: #6b5228;
+    border-bottom-color: #6b5228;
+  }
+
+  .vcell.last {
+    background-color: rgba(229, 57, 53, 0.75);
+  }
+
+  .vcell.ko {
+    background-color: rgba(76, 175, 80, 0.85);
+  }
+
+  .stone { width: 100%; height: 100%; }
+</style>

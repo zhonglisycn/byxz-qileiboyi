@@ -1,0 +1,144 @@
+<template>
+  <div class="page">
+    <div class="header">
+      <text class="t-back" style="font-size: {{fs(14, fontTick)}}px" @click="back">返回</text>
+      <text class="t-title" style="font-size: {{fs(19, fontTick)}}px">设置</text>
+      <text class="t-back" style="font-size: {{fs(14, fontTick)}}px"></text>
+    </div>
+
+    <div class="rows">
+      <div class="item" @click="cycleFont">
+        <text class="t-item-k" style="font-size: {{fs(14, fontTick)}}px">字体大小</text>
+        <text class="t-item-v" style="font-size: {{fs(13, fontTick)}}px">{{fontName}}</text>
+      </div>
+      <div class="item" @click="cycleKeep">
+        <text class="t-item-k" style="font-size: {{fs(14, fontTick)}}px">屏幕常亮</text>
+        <text class="t-item-v" style="font-size: {{fs(13, fontTick)}}px">{{keepName}}</text>
+      </div>
+      <div class="item" @click="clearSaves">
+        <text class="t-item-k" style="font-size: {{fs(14, fontTick)}}px">清除全部存档</text>
+        <text class="t-item-v" style="font-size: {{fs(13, fontTick)}}px">{{cleared ? '已清除' : '→'}}</text>
+      </div>
+      <div class="item" @click="goAbout">
+        <text class="t-item-k" style="font-size: {{fs(14, fontTick)}}px">关于</text>
+        <text class="t-item-v" style="font-size: {{fs(13, fontTick)}}px">v{{version}}</text>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="brand">
+      <text class="t-info" style="font-size: {{fs(11, fontTick)}}px">模糊二维码byxz</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import brightness from '@system.brightness'
+import { loadKey, saveKey, dropKey } from '../../common/core/util'
+import { GAMES } from '../../common/core/games'
+import { fs, getScale, ensureScale, saveScale, FONT_NAMES, FONT_STEPS } from '../../common/core/ui'
+
+export default {
+  fs: fs,
+
+  private: {
+    version: '5.3.1',
+    keepName: '已关闭',
+    fontName: '标准',
+    cleared: false,
+    fontTick: 0
+  },
+
+  onInit() {
+    ensureScale(() => {
+      this.syncFont()
+      this.fontTick++
+    })
+    this.syncFont()
+    loadKey('fc_keep_on', (ok, v) => {
+      this.keepName = (ok && v === '1') ? '已开启' : '已关闭'
+      try {
+        brightness.setKeepScreenOn({ keepScreenOn: ok && v === '1' })
+      } catch (e) { console.log('setKeepScreenOn 失败') }
+    })
+  },
+
+  syncFont() {
+    const s = getScale()
+    let idx = FONT_STEPS.indexOf(s)
+    if (idx < 0) {
+      let best = 0
+      for (let i = 0; i < FONT_STEPS.length; i++) {
+        if (Math.abs(FONT_STEPS[i] - s) < Math.abs(FONT_STEPS[best] - s)) best = i
+      }
+      idx = best
+    }
+    this.fontName = FONT_NAMES[idx]
+  },
+
+  cycleFont() {
+    this.$app.$def.tap()
+    const s = getScale()
+    let idx = 0
+    let best = Infinity
+    for (let i = 0; i < FONT_STEPS.length; i++) {
+      const d = Math.abs(FONT_STEPS[i] - s)
+      if (d < best) { best = d; idx = i }
+    }
+    idx = (idx + 1) % FONT_STEPS.length
+    saveScale(FONT_STEPS[idx], null)
+    this.syncFont()
+    // 改动 fontTick 让模板里的 fs(...) 重新求值
+    this.fontTick++
+  },
+
+  cycleKeep() {
+    this.$app.$def.tap()
+    const on = this.keepName !== '已开启'
+    this.keepName = on ? '已开启' : '已关闭'
+    saveKey('fc_keep_on', on ? '1' : '0', null)
+    try {
+      brightness.setKeepScreenOn({ keepScreenOn: on })
+    } catch (e) { console.log('setKeepScreenOn 失败') }
+  },
+
+  clearSaves() {
+    this.$app.$def.tap()
+    for (let i = 0; i < GAMES.length; i++) {
+      dropKey('fc_save_' + GAMES[i].key, null)
+    }
+    this.cleared = true
+  },
+
+  goAbout() {
+    router.push({ uri: 'pages/about' })
+  },
+
+  back() {
+    router.back()
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .rows {
+    width: 100%;
+    flex-direction: column;
+    flex-shrink: 0;
+    margin-top: 8px;
+  }
+
+  .spacer { flex: 1; }
+
+  .brand {
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    padding-bottom: 2px;
+  }
+
+</style>
