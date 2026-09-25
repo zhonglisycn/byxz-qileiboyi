@@ -90,7 +90,7 @@ const AI = 2
 
 // 放大档位：全盘 → 中 → 大（7×9 全盘用 25px 格子刚好放下）
 const ZOOMS = [
-  { cw: 26, ch: 26, name: '全盘' },
+  { cw: 24, ch: 24, name: '全盘' },
   { cw: 36, ch: 36, name: '中' },
   { cw: 50, ch: 50, name: '大' },
 ]
@@ -192,7 +192,7 @@ export default {
   /* ---------------- 视口 ---------------- */
   buildView() {
     const z = ZOOMS[this.zi]
-    this.vp = makeView(COLS, ROWS, z.cw, z.ch, 184, 272)
+    this.vp = makeView(COLS, ROWS, z.cw, z.ch, 174, 230)
     this.zoomName = z.name
   },
 

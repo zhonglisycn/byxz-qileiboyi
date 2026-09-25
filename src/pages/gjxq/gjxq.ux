@@ -108,7 +108,7 @@ const NAMES = { K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight', P: '
 
 // 放大档位：全盘 → 中 → 大（全盘看全局，放大后用方向键平移）
 const ZOOMS = [
-  { cw: 22, ch: 22, name: '全盘' },
+  { cw: 21, ch: 21, name: '全盘' },
   { cw: 32, ch: 32, name: '中' },
   { cw: 46, ch: 46, name: '大' },
 ]
@@ -200,7 +200,7 @@ export default {
 
   buildView() {
     const z = ZOOMS[this.z]
-    this.vp = makeView(8, 8, z.cw, z.ch, 184, 272)
+    this.vp = makeView(8, 8, z.cw, z.ch, 174, 230)
     this.zoomName = z.name
   },
 

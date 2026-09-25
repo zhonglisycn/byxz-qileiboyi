@@ -343,6 +343,10 @@ for (const p of pages) {
   * { box-sizing: border-box; }
   /* 关键：Vela 里 div 默认就是 flex 容器（浏览器里不是），不补这条布局会完全不对 */
   div, scroll, list, list-item, stack, swiper, progress { display: flex; }
+  /* 滚动区必须能收缩：浏览器里 flex item 默认 min-height:auto，会被内容顶高，
+     把后面的底部按钮/翻页条挤出屏幕；真机 Yoga 的最小尺寸是 0，本来就会收缩。
+     不补这条，预览会误报"底部按钮看不见"。 */
+  scroll, .scroll { min-height: 0; overflow: hidden; }
   .ux-text { display: inline-block; }
   .ux-img { display: block; }
   #dev { position: relative; width: 212px; height: 520px; overflow: hidden; background: #0d0f12; font-family: "Microsoft YaHei", "Noto Sans SC", sans-serif; }
@@ -350,7 +354,9 @@ for (const p of pages) {
 ${normalizeCss(baseCss)}
 ${normalizeCss(ownCss)}
   /* 胶囊屏遮罩：圆角外的部分涂成机身色，模拟四角被切掉 */
-  #mask { position:absolute; left:0; top:0; width:212px; height:520px; border-radius:46px;
+  /* 真机是胶囊屏：上下是半径 106px 的半圆（不是圆角矩形）。
+     遮罩必须一致，否则预览会把被玻璃切掉的内容也画出来，骗自己。 */
+  #mask { position:absolute; left:0; top:0; width:212px; height:520px; border-radius:106px;
           box-shadow: 0 0 0 400px #2b2f36; pointer-events:none; }
 </style></head>
 <body><div id="dev">${body}<div id="mask"></div></div></body></html>`

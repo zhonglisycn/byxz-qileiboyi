@@ -88,7 +88,7 @@ const AI = xq.BLACK      // 玩家执红
 
 // 放大档位：全盘 → 中 → 大（全盘看全局，放大后用方向键平移）
 const ZOOMS = [
-  { cw: 20, ch: 20, name: '全盘' },
+  { cw: 19, ch: 19, name: '全盘' },
   { cw: 30, ch: 30, name: '中' },
   { cw: 42, ch: 42, name: '大' },
 ]
@@ -169,7 +169,7 @@ export default {
   /* ---------------- 视口 ---------------- */
   buildView() {
     const z = ZOOMS[this.zi]
-    this.vp = makeView(xq.W, xq.H, z.cw, z.ch, 184, 272)
+    this.vp = makeView(xq.W, xq.H, z.cw, z.ch, 174, 230)
     this.zoomName = z.name
   },
 

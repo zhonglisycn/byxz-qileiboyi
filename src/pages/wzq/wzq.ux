@@ -92,8 +92,11 @@ const SAVE = 'fc_save_wzq'
 const AI = 2            // 玩家执黑先行
 
 // 放大档位：全盘 → 中 → 大（按路数选全盘格宽，保证三种棋盘全盘时都刚好放下）
-function zooms() {
-  const full = 18
+function zooms(n) {
+  // 真机是胶囊屏：可用区只有 174×230（左右各 18 边距、上下各 50 安全边距）。
+  // 全盘档按路数反算格宽，保证 15/17/19 路全盘时都刚好落在可视区内
+  // （原来硬编码 18，15 路就是 270px，棋盘被玻璃切掉一半）。
+  const full = Math.max(6, Math.min(26, Math.floor(174 / n), Math.floor(230 / n)))
   return [
     { cw: full, ch: full, name: '全盘' },
     { cw: 28, ch: 28, name: '中' },
@@ -204,10 +207,10 @@ export default {
 
   /* ---------------- 视口 ---------------- */
   buildView() {
-    const zs = zooms()
+    const zs = zooms(this.n)
     if (this.zi >= zs.length || this.zi < 0) this.zi = 0
     const z = zs[this.zi]
-    this.vp = makeView(this.n, this.n, z.cw, z.ch, 184, 272)
+    this.vp = makeView(this.n, this.n, z.cw, z.ch, 174, 230)
     this.zoomName = z.name
   },
 
@@ -215,7 +218,7 @@ export default {
     this.$app.$def.tap()
     const cx = this.vp.ox + Math.floor(this.vp.visCols / 2)
     const cy = this.vp.oy + Math.floor(this.vp.visRows / 2)
-    this.zi = (this.zi + 1) % zooms().length
+    this.zi = (this.zi + 1) % zooms(this.n).length
     this.buildView()
     // 尽量保持原来的视线中心
     this.vp.ox = Math.max(0, Math.min(maxOx(this.vp), cx - Math.floor(this.vp.visCols / 2)))

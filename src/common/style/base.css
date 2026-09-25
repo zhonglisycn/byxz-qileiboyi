@@ -3,6 +3,11 @@
    避免内容贴到圆角上（四角会被圆弧切掉）。
    字号统一由页面内联的 fs(n) 覆盖，这里的 font-size 只是兜底默认值。 */
 
+/* 屏幕是胶囊形：212×520，上下各是一个半径 106px（=屏宽一半）的半圆。
+   全宽内容（176px = 212 − 左右各 18）只有在 y ≥ 47px 时才整条落在圆内，
+   所以上下安全边距都必须给到 ~50px；按 22/12 给的话，顶栏两侧的按钮和
+   底部按钮/翻页条会落在半圆里被玻璃切掉（点不到）。
+   可用高度因此只有 520 − 100 = 420px。 */
 .page {
   flex-direction: column;
   width: 100%;
@@ -10,8 +15,8 @@
   background-color: #0d0f12;
   padding-left: 18px;
   padding-right: 18px;
-  padding-top: 22px;
-  padding-bottom: 12px;
+  padding-top: 50px;
+  padding-bottom: 50px;
 }
 
 .row { flex-direction: row; align-items: center; }
