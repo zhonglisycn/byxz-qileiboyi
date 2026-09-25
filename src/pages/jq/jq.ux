@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page" style="padding-top: {{padTop}}px; padding-bottom: {{padBottom}}px; padding-left: {{padSide}}px; padding-right: {{padSide}}px">
     <div class="header">
       <text style="font-size: {{fs(14, fontTick)}}px" class="back" @click="confirmExit">返回</text>
       <text style="font-size: {{fs(19, fontTick)}}px" class="title">军棋</text>
@@ -106,6 +106,9 @@ export default {
   },
 
   private: {
+    padTop: 30,
+    padBottom: 32,
+    padSide: 18,
     fontTick: 0,
     cells: [],
     hint: '',
@@ -133,7 +136,15 @@ export default {
     padMidTop: 0, padRightX: 0, padMidX: 0, padBottomY: 0,
   },
 
+  syncPad() {
+    const app = this.$app.$def
+    this.padTop = app.padTop
+    this.padBottom = app.padBottom
+    this.padSide = app.padSide
+  },
+
   onInit() {
+    this.syncPad();
     ensureScale(() => { this.fontTick++ })
     const app = this.$app.$def
     const s = app.setup || {}

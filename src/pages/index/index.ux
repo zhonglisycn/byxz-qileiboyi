@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page" style="padding-top: {{padTop}}px; padding-bottom: {{padBottom}}px; padding-left: {{padSide}}px; padding-right: {{padSide}}px">
     <div class="header">
       <text style="font-size: {{fs(12, fontTick)}}px" class="subtitle"></text>
       <text style="font-size: {{fs(19, fontTick)}}px" class="title">棋类博弈</text>
@@ -26,13 +26,24 @@ import { fs, ensureScale } from '../../common/core/ui'
 export default {
   fs: fs,
   private: {
+    padTop: 30,
+    padBottom: 32,
+    padSide: 18,
     games: [],
     ver: 'v5.1',
     tip: '八种棋类 · 人机 / 双人',
     fontTick: 0
   },
 
+  syncPad() {
+    const app = this.$app.$def
+    this.padTop = app.padTop
+    this.padBottom = app.padBottom
+    this.padSide = app.padSide
+  },
+
   onInit() {
+    this.syncPad();
     ensureScale(() => { this.fontTick++ })
     this.games = this.$app.$def.GAMES
   },

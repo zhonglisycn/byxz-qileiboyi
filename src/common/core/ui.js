@@ -11,7 +11,7 @@ import { loadKey, saveKey } from './util.js'
 /* 字体缩放                                                            */
 /* ------------------------------------------------------------------ */
 
-let scale = 1
+let scale = 1.15   // 默认比"标准"大一档：真机上 1.0 看起来偏小
 let loaded = false
 
 export const FONT_STEPS = [0.85, 1, 1.15, 1.3]

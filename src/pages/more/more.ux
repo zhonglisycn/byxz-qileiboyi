@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page" style="padding-top: {{padTop}}px; padding-bottom: {{padBottom}}px; padding-left: {{padSide}}px; padding-right: {{padSide}}px">
     <div class="header">
       <text class="t-back" style="font-size: {{fs(14, fontTick)}}px" @click="back">返回</text>
       <text class="t-title" style="font-size: {{fs(19, fontTick)}}px">设置</text>
@@ -7,6 +7,10 @@
     </div>
 
     <div class="rows">
+      <div class="item" @click="cyclePad">
+        <text class="t-item-k" style="font-size: {{fs(14, fontTick)}}px">页面留白</text>
+        <text class="t-item-v" style="font-size: {{fs(13, fontTick)}}px">{{padName}}</text>
+      </div>
       <div class="item" @click="cycleFont">
         <text class="t-item-k" style="font-size: {{fs(14, fontTick)}}px">字体大小</text>
         <text class="t-item-v" style="font-size: {{fs(13, fontTick)}}px">{{fontName}}</text>
@@ -44,14 +48,26 @@ export default {
   fs: fs,
 
   private: {
-    version: '5.3.3',
+    padName: '留边',
+    padTop: 30,
+    padBottom: 32,
+    padSide: 18,
+    version: '5.3.4',
     keepName: '已关闭',
     fontName: '标准',
     cleared: false,
     fontTick: 0
   },
 
+  syncPad() {
+    const app = this.$app.$def
+    this.padTop = app.padTop
+    this.padBottom = app.padBottom
+    this.padSide = app.padSide
+  },
+
   onInit() {
+    this.syncPad();
     ensureScale(() => {
       this.syncFont()
       this.fontTick++
@@ -76,6 +92,20 @@ export default {
       idx = best
     }
     this.fontName = FONT_NAMES[idx]
+  },
+
+  onShow() { this.syncPadName() },
+
+  cyclePad() {
+    const app = this.$app.$def
+    app.tap()
+    app.setPad((app.padMode + 1) % app.PAD_PRESETS.length)
+    this.syncPad()
+    this.syncPadName()
+  },
+
+  syncPadName() {
+    this.padName = this.$app.$def.padName
   },
 
   cycleFont() {
