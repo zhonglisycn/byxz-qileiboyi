@@ -6,7 +6,7 @@
       <text style="font-size: {{fs(14, fontTick)}}px" class="back"></text>
     </div>
 
-    <scroll class="scroll">
+    <scroll class="scroll" scroll-y="true" bounces="true">
       <div class="rule-group" for="g in help" tid="h">
         <text style="font-size: {{fs(13, fontTick)}}px" class="rule-h">{{g.h}}</text>
         <div class="rule-lines">
