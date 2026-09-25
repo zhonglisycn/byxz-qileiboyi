@@ -105,7 +105,7 @@ export default {
     this.lv = parseInt(this.level, 10) || s.level || 1
     this.modeText = this.mode === 'ai' ? ('人机 · ' + this.levelName()) : '双人'
     // 井字棋只有 9 格，直接铺满可视区，不需要缩放/平移
-    this.vp = makeView(3, 3, 58, 58, 174, 230)
+    this.vp = makeView(3, 3, 58, 58, 174, 258)
 
     if (this.resume) {
       loadKey(SAVE, (ok, data) => {

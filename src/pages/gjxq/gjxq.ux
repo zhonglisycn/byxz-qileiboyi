@@ -200,7 +200,7 @@ export default {
 
   buildView() {
     const z = ZOOMS[this.z]
-    this.vp = makeView(8, 8, z.cw, z.ch, 174, 230)
+    this.vp = makeView(8, 8, z.cw, z.ch, 174, 258)
     this.zoomName = z.name
   },
 

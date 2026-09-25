@@ -169,7 +169,7 @@ export default {
   /* ---------------- 视口 ---------------- */
   buildView() {
     const z = ZOOMS[this.zi]
-    this.vp = makeView(xq.W, xq.H, z.cw, z.ch, 174, 230)
+    this.vp = makeView(xq.W, xq.H, z.cw, z.ch, 174, 258)
     this.zoomName = z.name
   },
 

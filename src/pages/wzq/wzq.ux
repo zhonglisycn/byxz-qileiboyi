@@ -210,7 +210,7 @@ export default {
     const zs = zooms(this.n)
     if (this.zi >= zs.length || this.zi < 0) this.zi = 0
     const z = zs[this.zi]
-    this.vp = makeView(this.n, this.n, z.cw, z.ch, 174, 230)
+    this.vp = makeView(this.n, this.n, z.cw, z.ch, 174, 258)
     this.zoomName = z.name
   },
 
